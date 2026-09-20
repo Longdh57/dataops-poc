@@ -48,6 +48,7 @@ module "runtime" {
   api_service_account = var.api_service_account
   web_service_account = var.web_service_account
   iap_enabled         = var.iap_enabled
+  public_access       = var.public_access
   api_image           = var.api_image
   web_image           = var.web_image
 }

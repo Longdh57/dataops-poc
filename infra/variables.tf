@@ -54,3 +54,9 @@ variable "web_service_account" {
   description = "Service account ma Cloud Run Web chay duoi"
   type        = string
 }
+
+variable "public_access" {
+  description = "NO KY THUAT — mo web cho allUsers. Dat lai false truoc P2."
+  type        = bool
+  default     = false
+}

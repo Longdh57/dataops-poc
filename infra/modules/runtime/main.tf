@@ -166,3 +166,19 @@ resource "google_cloud_run_v2_service_iam_member" "web_calls_api" {
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.web_service_account}"
 }
+
+# ============================================================
+# NO KY THUAT — TAM THOI
+# Mo web cho moi nguoi vi IAP chua bat duoc (project khong thuoc
+# Organization). Chi WEB duoc mo; API van dong kin va chi web goi
+# duoc bang OIDC token.
+# PHAI dat public_access = false truoc P2, khi du lieu that do vao.
+# ============================================================
+resource "google_cloud_run_v2_service_iam_member" "public_web" {
+  count    = var.public_access ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.web.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}

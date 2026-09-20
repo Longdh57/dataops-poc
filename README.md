@@ -110,8 +110,43 @@ Bien quan trong trong `terraform.tfvars`:
 
 ## Con no ky thuat
 
+### ⚠️ PHAI DONG TRUOC P2 — web dang mo public
+
+`infra/terraform.tfvars` dang dat `public_access = true`. Bat cu ai co link
+deu xem duoc https://dataops-dev.3ddesigns.xyz — KHONG can dang nhap.
+
+Ly do: IAP chua bat duoc (project khong thuoc Organization), ma khong co
+IAP thi trinh duyet khong co cach nao dang nhap, moi request deu 403.
+Mo tam de xem va demo.
+
+Chap nhan duoc BAY GIO vi trang chi co ba dong trang thai, khong co du
+lieu. P2 la luc du lieu that tu BigQuery do vao Postgres — truoc do PHAI:
+
+```bash
+# trong infra/terraform.tfvars: public_access = false
+cd infra && terraform apply
+```
+
+Kiem chung da dong:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' https://dataops-dev.3ddesigns.xyz
+# phai tra ve 403
+```
+
+Chi WEB duoc mo. API van dong kin, chi `dataops-web` goi duoc bang OIDC token.
+
+Cach go tan goc: dang ky Cloud Identity Free cho `3ddesigns.xyz` -> project
+co Organization -> IAP tu cap OAuth client -> bo duoc `public_access` han.
+
+### Cac mon khac
+
 - `dataops-api`, `dataops-jobs`, `dataops-web` service account dang tao
   bang gcloud, chua nam trong Terraform. P5 ("Terraform hoa toan bo") phai
   `terraform import` chung vao.
 - Quyen `secretmanager.secretAccessor` cua `dataops-api` dang co o CA HAI
   noi: cap project (tu P0) va cap secret (P1). Nen go cai cap project.
+- Pipeline: job `deploy-staging` va `deploy-prod` deploy vao CUNG service,
+  cung domain. `gcloud run deploy` cho revision moi 100% traffic ngay, nen
+  buoc duyet tay o `deploy-prod` khong con y nghia — code da live tu truoc.
+  Sua bang `--no-traffic --tag=staging` khi can tach that.

@@ -12,3 +12,7 @@ iap_members = [
   # "user:ban@gmail.com",
   # "group:dataops-users@googlegroups.com",
 ]
+
+# NO KY THUAT: mo web cho allUsers khi chua bat duoc IAP.
+# PHAI dat false truoc P2.
+public_access = false
