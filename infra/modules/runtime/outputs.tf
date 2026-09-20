@@ -17,3 +17,10 @@ output "api_name" {
 output "web_name" {
   value = google_cloud_run_v2_service.web.name
 }
+
+output "sync_job" {
+  value = google_cloud_run_v2_job.sync.name
+}
+output "migrate_job" {
+  value = google_cloud_run_v2_job.migrate.name
+}

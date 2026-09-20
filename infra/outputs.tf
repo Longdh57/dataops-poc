@@ -37,3 +37,14 @@ output "workload_identity_provider" {
 output "deployer_email" {
   value = module.iam.deployer_email
 }
+
+output "staging_bucket" {
+  value = module.storage.bucket
+}
+
+output "sync_job" {
+  value = module.runtime.sync_job
+}
+output "migrate_job" {
+  value = module.runtime.migrate_job
+}

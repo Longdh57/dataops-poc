@@ -31,7 +31,7 @@ module "database" {
   network_id     = module.network.network_id
   psa_connection = module.network.psa_connection
 
-  secret_accessors = [var.api_service_account]
+  secret_accessors = [var.api_service_account, var.jobs_service_account]
 }
 
 module "runtime" {
@@ -51,6 +51,11 @@ module "runtime" {
   public_access       = var.public_access
   api_image           = var.api_image
   web_image           = var.web_image
+
+  jobs_service_account = var.jobs_service_account
+  jobs_image           = var.jobs_image
+  staging_bucket       = module.storage.bucket
+  bq_dataset           = var.bq_dataset
 }
 
 module "iam" {
@@ -62,4 +67,20 @@ module "iam" {
   project_number = data.google_project.this.number
   github_repo    = var.github_repo
   iap_members    = var.iap_members
+}
+
+module "storage" {
+  source     = "./modules/storage"
+  project_id = var.project_id
+  region     = var.region
+  labels     = local.labels
+
+  writers = [var.jobs_service_account]
+}
+
+module "monitoring" {
+  source        = "./modules/monitoring"
+  project_id    = var.project_id
+  alert_email   = var.alert_email
+  sync_job_name = module.runtime.sync_job
 }

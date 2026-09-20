@@ -47,3 +47,20 @@ variable "public_access" {
   type        = bool
   default     = false
 }
+
+variable "jobs_service_account" {
+  description = "Service account cua Sync Job va Export Job"
+  type        = string
+}
+variable "jobs_image" {
+  type    = string
+  default = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+variable "staging_bucket" {
+  type    = string
+  default = ""
+}
+variable "bq_dataset" {
+  type    = string
+  default = "dataops_src"
+}

@@ -3,6 +3,7 @@ region              = "asia-southeast1"
 env                 = "poc"
 api_service_account = "dataops-api@dataops-poc-2026.iam.gserviceaccount.com"
 web_service_account = "dataops-web@dataops-poc-2026.iam.gserviceaccount.com"
+jobs_service_account = "dataops-jobs@dataops-poc-2026.iam.gserviceaccount.com"
 
 # Bat CI/CD: dien 'owner/repo' cua GitHub
 github_repo = ""
@@ -16,3 +17,5 @@ iap_members = [
 # NO KY THUAT: mo web cho allUsers khi chua bat duoc IAP.
 # PHAI dat false truoc P2.
 public_access = false
+
+alert_email = "longbloginfo@gmail.com"

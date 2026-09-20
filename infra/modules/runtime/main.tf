@@ -182,3 +182,156 @@ resource "google_cloud_run_v2_service_iam_member" "public_web" {
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
+
+# ==================== JOBS ====================
+
+locals {
+  job_env = {
+    GCP_PROJECT_ID  = var.project_id
+    BQ_DATASET      = var.bq_dataset
+    BQ_TABLE        = "fact_names"
+    BQ_LOCATION     = var.region
+    STAGING_BUCKET  = var.staging_bucket
+    WORKDIR         = "/tmp/sync"
+  }
+}
+
+# Migration chay TU TRONG VPC — Cloud SQL chi co private IP nen khong
+# the chay alembic tu may ca nhan.
+resource "google_cloud_run_v2_job" "migrate" {
+  project             = var.project_id
+  name                = "dataops-migrate"
+  location            = var.region
+  labels              = var.labels
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = var.api_service_account
+      max_retries     = 1
+      timeout         = "600s"
+
+      vpc_access {
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image   = var.api_image
+        command = ["alembic"]
+        args    = ["upgrade", "head"]
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+}
+
+resource "google_cloud_run_v2_job" "sync" {
+  project             = var.project_id
+  name                = "dataops-sync"
+  location            = var.region
+  labels              = var.labels
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = var.jobs_service_account
+      max_retries     = 1
+      timeout         = "900s"
+
+      vpc_access {
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image = var.jobs_image
+
+        dynamic "env" {
+          for_each = local.job_env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        resources {
+          limits = {
+            cpu    = "2"
+            memory = "2Gi"
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [terraform_data.secret_gate]
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+}
+
+# Scheduler goi Sync Job moi 60 giay — chu ky ngan nhat Cloud Scheduler ho tro.
+resource "google_cloud_scheduler_job" "sync" {
+  project     = var.project_id
+  name        = "dataops-sync-every-60s"
+  region      = var.region
+  schedule    = "* * * * *"
+  time_zone   = "Asia/Ho_Chi_Minh"
+  description = "Kich hoat Sync Job kiem tra metadata BigQuery"
+
+  attempt_deadline = "320s"
+
+  retry_config {
+    retry_count = 1
+  }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.sync.name}:run"
+
+    oauth_token {
+      service_account_email = var.jobs_service_account
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+}
+
+# Scheduler phai duoc phep chay job
+resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.sync.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.jobs_service_account}"
+}

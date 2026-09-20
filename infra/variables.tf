@@ -60,3 +60,26 @@ variable "public_access" {
   type        = bool
   default     = false
 }
+
+variable "jobs_service_account" {
+  description = "Service account cua Sync Job va Export Job"
+  type        = string
+}
+
+variable "jobs_image" {
+  description = "Anh cua Sync Job / Export Job"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "bq_dataset" {
+  description = "Dataset BigQuery dong vai nguon su that"
+  type        = string
+  default     = "dataops_src"
+}
+
+variable "alert_email" {
+  description = "Email nhan canh bao dong bo tre"
+  type        = string
+  default     = ""
+}

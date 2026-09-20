@@ -94,6 +94,87 @@ proxy thi Google khong cap duoc chung chi.
 4. Settings -> Environments -> tao `production`, dat required reviewer
    de co buoc duyet tay
 
+## Du lieu (P2)
+
+Nguon: `bigquery-public-data.usa_names.usa_1910_current` — ten khai sinh
+o Hoa Ky theo bang, gioi tinh, nam. Du lieu that do Cuc An sinh Xa hoi My
+cong bo, khong phai so tu sinh.
+
+### Xem tren BigQuery
+
+```bash
+bq query --use_legacy_sql=false --location=asia-southeast1 \
+ 'SELECT run_id, COUNT(*) FROM `dataops-poc-2026.dataops_src.fact_names` GROUP BY run_id'
+```
+
+Hoac Console: BigQuery -> dataops-poc-2026 -> dataops_src -> fact_names
+
+| | |
+|---|---|
+| Bang fact | `dataops-poc-2026.dataops_src.fact_names` |
+| Partition | `DATE(loaded_at)` — moi lan nap mot partition |
+| Cluster | `state, gender, year` |
+| Cot | run_id, loaded_at, year, state, gender, name, number, market_share, prev_number, prev_year |
+
+`market_share` = ty trong cua mot ten trong tong so tre cung (nam, bang,
+gioi tinh). Cong lai dung bang 1.0 o ca 1.224 nhom — day la co so cho
+luat QC `market_share_sum`.
+
+### Xem tren Postgres
+
+Cloud SQL chi co private IP nen khong noi truc tiep tu may ca nhan duoc.
+Xem qua giao dien hoac API:
+
+- Giao dien: https://dataops-dev.3ddesigns.xyz
+- `GET /api/schema` — toan bo bang kem so dong va dung luong
+- `GET /api/facts?state=CA&year=2021&gender=F` — du lieu that
+- `GET /api/version` — do tuoi ban sao
+
+Duoi local thi noi thang duoc:
+
+```bash
+docker exec dashboard-bigquery-db-1 psql -U dataops -d dataops -c '\d fact_current'
+```
+
+### Sync Job
+
+```
+07:29:05  team Data INSERT vao BigQuery
+07:29:24  Scheduler kich hoat, job phat hien thay doi   (+19s)
+07:29:56  Postgres phan anh xong                        (+51s tong)
+```
+
+Phat hien thay doi bang `__TABLES__` — truy van metadata, **quet 0 byte**,
+nen poll moi 60 giay ca ngay khong ton dong nao.
+
+Nap: EXPORT DATA -> parquet tren GCS -> COPY vao `fact_staging` ->
+doi ten trong mot transaction. Da kiem chung 1.062 request doc dong thoi
+trong luc doi ten: **0 that bai**.
+
+Migration chay bang Cloud Run Job vi Cloud SQL chi co private IP:
+
+```bash
+gcloud run jobs execute dataops-migrate --region=asia-southeast1
+```
+
+### Bai hoc ve hieu nang
+
+Lan dau sync mat **229s** — vuot tieu chi 2 phut. Do log thi 199s trong
+so do la dung index, khong phai COPY. Nguyen nhan: `db-f1-micro` chi co
+~0,6GB RAM nen `maintenance_work_mem` mac dinh rat nho, sap xep khi build
+index tran ra dia PD_HDD.
+
+Hai lenh `SET` trong Sync Job dua xuong **33,2s** — nhanh hon 7 lan,
+khong doi phan cung, khong ton them tien:
+
+```sql
+SET maintenance_work_mem = '160MB';
+SET synchronous_commit = off;
+```
+
+`synchronous_commit = off` an toan o day vi bang staging la du lieu dung
+mot lan — hong thi sync lai tu BigQuery.
+
 ## Terraform
 
 ```bash
