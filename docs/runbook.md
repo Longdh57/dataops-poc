@@ -9,6 +9,7 @@ Bảng tra nhanh:
 | Tình huống | Mục |
 |---|---|
 | Số trên màn hình có vẻ cũ | [Làm mới bảng khác Nạp lại từ nguồn](#làm-mới-bảng-khác-nạp-lại-từ-nguồn) |
+| Ngoại lệ vừa xử lý xong lại hiện ra | [Ngoại lệ đã xử lý lại hiện ra](#ngoại-lệ-đã-xử-lý-lại-hiện-ra) |
 | Cảnh báo "Sync Job im lặng quá 30 phút" | [Khi đồng bộ hỏng](#khi-đồng-bộ-hỏng) |
 | Sale báo file tải về sai | [Khi file xuất sai](#khi-file-xuất-sai) |
 | Cần quay lại số liệu của bản trước | [Quay lại phiên bản trước](#quay-lại-phiên-bản-trước) |
@@ -38,6 +39,32 @@ không có vấn đề gì.
 Sync Job tự chạy mỗi 60 giây và **tự bỏ qua nếu nguồn không đổi** (nó so
 `last_modified_time` của bảng BigQuery, truy vấn metadata nên quét 0 byte).
 Bấm *Nạp lại từ nguồn* chỉ để ép nó chạy ngay thay vì chờ chu kỳ sau.
+
+---
+
+## Ngoại lệ đã xử lý lại hiện ra
+
+**Dấu hiệu:** hộp thư ngoại lệ vừa dọn sạch, sau một lần nạp mới lại đầy đúng
+những lỗi cũ; cổng phát hành khoá lại.
+
+**Đây là hành vi đúng của code hiện tại, không phải hỏng.** QC sinh ngoại lệ
+theo từng lần nạp. Có lần nạp mới thì `fact_current` bị thay nguyên khối, QC
+quét lại toàn bộ luật và sinh ra một bộ ngoại lệ `open` mới. Quyết định cũ
+không mất — chúng vẫn nằm đó với lần nạp cũ, xem bằng bộ lọc trạng thái trên
+trang *Ngoại lệ* — nhưng hộp thư lọc theo trạng thái chứ không theo lần nạp,
+nên bộ mới đổ hết vào.
+
+Hai điều cần biết:
+
+- **Ô đã bấm *Áp dụng số mới* cũng hiện lại.** Override nằm ở `fact_override`
+  và chỉ được ghép vào lúc đọc; luật QC thì query thẳng `fact_current`. Sửa tay
+  không làm lỗi biến mất dưới mắt QC.
+- **Nạp lại từ nguồn khi nguồn không đổi thì không có gì xảy ra cả.** Sync Job
+  dừng ngay ở bước so vân tay, không sinh lần nạp mới, hộp thư giữ nguyên.
+
+Việc cần làm lúc này: xử lý lại bộ ngoại lệ mới. Đây là điểm yếu đã biết của
+quy trình chứ không phải sự cố; cách khép vòng nằm ở
+[Quy trình chất lượng dữ liệu](quy-trinh-chat-luong.md).
 
 ---
 

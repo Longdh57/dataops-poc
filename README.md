@@ -477,6 +477,9 @@ la hong:
   loi thi lam gi, quay lai phien ban truoc, them nguoi dung, dung lai tu
   project trong
 - [docs/demo.md](docs/demo.md) — kich ban trinh bay 5 phut
+- [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) — luong
+  MUC TIEU cua chat luong du lieu: loi di vao tu dau, ai duyet, ban ky
+  ghi gi, kem bang doi chieu voi code hien tai. Chua implement.
 
 ### Test
 
@@ -545,3 +548,10 @@ co Organization -> IAP tu cap OAuth client -> bo duoc `public_access` han.
   cung domain. `gcloud run deploy` cho revision moi 100% traffic ngay, nen
   buoc duyet tay o `deploy-prod` khong con y nghia — code da live tu truoc.
   Sua bang `--no-traffic --tag=staging` khi can tach that.
+- Quy trinh chat luong KHONG khep vong. Nang nhat: `apply` ghi vao
+  `fact_override` — chi song o Postgres, khong gan `run_id`, khong bao gio
+  het han. Team Data sua dung so o nguon thi override cu VAN de len, file
+  ban ra sai ma khong ai phat hien. Kem theo: `send_back` khong gui di dau
+  ca, `park`/`send_back` van mo cong phat hanh, `signed_version.checksum`
+  co cot nhung chua bao gio duoc ghi. Luong thay the va thu tu go o
+  [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md).
