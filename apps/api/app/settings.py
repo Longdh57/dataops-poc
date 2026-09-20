@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     bigquery_dataset: str = "dataops_src"
     staging_bucket: str = ""
     region: str = "asia-southeast1"
+    # Cloud Run Job ma nut "Nap lai tu nguon" kich hoat
+    sync_job_name: str = "dataops-sync"
 
     # Bat buoc verify IAP JWT. Chi dat false khi chay local hoac khi
     # IAP chua bat duoc — luc do danh tinh lay tu header X-Dev-User.

@@ -35,3 +35,6 @@ venv/
 .DS_Store
 .idea/
 .vscode/
+
+# --- next.js tu sinh moi lan dev/build, tham chieu vao .next/ dang bi ignore ---
+apps/web/next-env.d.ts

@@ -2,7 +2,7 @@
 
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -81,7 +81,10 @@ def health() -> dict:
 def me(p: Me) -> dict:
     return {"email": p.email, "display_name": p.display_name,
             "roles": sorted(p.roles),
-            "scope_states": "tat ca" if p.unrestricted else sorted(p.scope_states)}
+            "scope_states": "tat ca" if p.unrestricted else sorted(p.scope_states),
+            # Giao dien an bo chon danh tinh khi IAP da bat — luc do danh
+            # tinh den tu JWT cua Google, khong doi duoc bang tay.
+            "require_iap": settings.require_iap}
 
 
 @app.get("/api/version")
@@ -204,6 +207,9 @@ def exceptions(
     status: str = Query("open"),
     severity: str | None = None,
     state: str | None = None,
+    year: int | None = None,
+    gender: str | None = None,
+    name: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
     scope_sql, scope_params = scope_clause(p, state)
@@ -212,6 +218,13 @@ def exceptions(
         where.append(scope_sql); params += list(scope_params)
     if severity:
         where.append("severity = %s"); params.append(severity)
+    # Cung bo loc voi thanh loc chung cua giao dien.
+    if year:
+        where.append("year = %s"); params.append(year)
+    if gender:
+        where.append("gender = %s"); params.append(gender.upper())
+    if name:
+        where.append("name ILIKE %s"); params.append(f"{name}%")
 
     with db() as conn, conn.cursor() as cur:
         cur.execute(f"SELECT count(*) AS n FROM qc_exception WHERE {' AND '.join(where)}", params)
@@ -422,3 +435,332 @@ def get_export(job_id: int, p: Me) -> dict:
         raise HTTPException(403, "khong phai job cua ban")
     return {"job_id": job["id"], "status": job["status"], "run_id": job["run_id"],
             "gcs_path": job["gcs_path"], "error": job["error"]}
+
+
+# ---------------------------------------------------------------- options
+
+@app.get("/api/options")
+def options(p: Me) -> dict:
+    """Gia tri cho thanh loc.
+
+    Pham vi ap ca o day: analyst Texas khong duoc nhin thay ten bang khac
+    trong dropdown — ro ri danh sach bang cung la ro ri.
+    """
+    scope_sql, scope_params = scope_clause(p, None)
+    clause = f"WHERE {scope_sql}" if scope_sql else ""
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT DISTINCT state FROM fact_current {clause} ORDER BY state", scope_params)
+        states = [r["state"] for r in cur.fetchall()]
+        cur.execute(f"SELECT DISTINCT year FROM fact_current {clause} ORDER BY year DESC", scope_params)
+        years = [r["year"] for r in cur.fetchall()]
+    return {"states": states, "years": years, "genders": ["F", "M"],
+            "sortable": sorted(SORTABLE)}
+
+
+# --------------------------------------------------------------- dashboard
+
+@app.get("/api/summary")
+def summary(
+    p: Me,
+    state: str | None = None,
+    year: int | None = None,
+    gender: str | None = None,
+) -> dict:
+    """So lieu cho dashboard. Mot lan goi thay vi sau lan goi roi rac.
+
+    Bo loc tren thanh cong cu duoc ap vao phan dem dong va dem ngoai le;
+    cong phat hanh va ban da ky thi luon la toan cuc — ky la ky ca bo
+    du lieu, khong ky rieng mot bang.
+    """
+    scope_sql, scope_params = scope_clause(p, state)
+    where, params = ([scope_sql], list(scope_params)) if scope_sql else ([], [])
+    if year:
+        where.append("year = %s"); params.append(year)
+    if gender:
+        where.append("gender = %s"); params.append(gender.upper())
+    clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(f"""SELECT count(*) AS rows, min(year) AS year_min, max(year) AS year_max,
+                               sum(number)::bigint AS total_number
+                        FROM fact_current {clause}""", params)
+        facts = cur.fetchone()
+
+        # Ngoai le: cung bo loc, nhung khoa cua ngoai le co the NULL
+        # (luat theo nhom nhu thi_phan_khong_tron_100 khong gan vao mot ten).
+        extra = f" AND {' AND '.join(where)}" if where else ""
+
+        cur.execute(
+            f"""SELECT severity, count(*) AS n FROM qc_exception
+                WHERE status='open'{extra} GROUP BY severity""", params)
+        by_severity = {r["severity"]: r["n"] for r in cur.fetchall()}
+
+        cur.execute(
+            f"""SELECT rule_id, severity, count(*) AS n FROM qc_exception
+                WHERE status='open'{extra} GROUP BY rule_id, severity ORDER BY n DESC""", params)
+        by_rule = cur.fetchall()
+
+        cur.execute(
+            f"""SELECT state, count(*) AS n FROM qc_exception
+                WHERE status='open' AND state IS NOT NULL{extra}
+                GROUP BY state ORDER BY n DESC LIMIT 12""", params)
+        by_state = cur.fetchall()
+
+        cur.execute(
+            f"SELECT count(*) AS n FROM qc_exception WHERE status <> 'open'{extra}", params)
+        resolved = cur.fetchone()["n"]
+
+        # So dong bi gan co = so khoa tu nhien khac nhau dang co ngoai le mo.
+        cur.execute(
+            f"""SELECT count(DISTINCT (year, state, gender, name)) AS n FROM qc_exception
+                WHERE status='open' AND name IS NOT NULL{extra}""", params)
+        flagged = cur.fetchone()["n"]
+
+        ov_scope, ov_params = scope_clause(p, state)
+        cur.execute(
+            f"""SELECT count(*) AS n FROM fact_override
+                {f'WHERE {ov_scope}' if ov_scope else ''}""", ov_params)
+        overrides = cur.fetchone()["n"]
+
+        # Cong phat hanh la TOAN CUC: no khoa ca bo du lieu chu khong khoa
+        # rieng pham vi cua ai. Analyst Texas phai thay dung con so dang
+        # chan phat hanh, ke ca khi ngoai le nam o bang khac.
+        cur.execute("""SELECT count(*) AS n FROM qc_exception
+                       WHERE status='open' AND severity='critical'""")
+        blocking = cur.fetchone()["n"]
+
+        cur.execute("""SELECT last_run_id, last_synced_at, last_row_count, status
+                       FROM sync_state WHERE id = 1""")
+        sync = cur.fetchone()
+        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at
+                       FROM signed_version ORDER BY id DESC LIMIT 1""")
+        signed = cur.fetchone()
+
+        since = 0
+        if signed:
+            cur.execute("SELECT count(*) AS n FROM fact_override WHERE created_at > %s",
+                        (signed["signed_at"],))
+            since = cur.fetchone()["n"]
+
+    rows_now = sync["last_row_count"] if sync else None
+    return {
+        "scope": "tat ca" if p.unrestricted else sorted(p.scope_states),
+        "filters": {"state": state, "year": year, "gender": gender},
+        "facts": facts,
+        "exceptions": {"open": sum(by_severity.values()), "by_severity": by_severity,
+                       "by_rule": by_rule, "by_state": by_state,
+                       "resolved": resolved, "flagged_rows": flagged},
+        "overrides": overrides,
+        "gate": {"locked": blocking > 0, "blocking": blocking},
+        "last_signed": signed,
+        "delta": {
+            # Chenh lech so voi ban da ky gan nhat — cai nguoi duyet can
+            # biet truoc khi ky ban tiep theo.
+            "run_changed": bool(signed and sync and signed["run_id"] != sync["last_run_id"]),
+            "rows_signed": signed["row_count"] if signed else None,
+            "rows_now": rows_now,
+            "rows_delta": (rows_now - signed["row_count"]) if signed and rows_now else None,
+            "overrides_since": since,
+        },
+        "sync": sync,
+    }
+
+
+# ------------------------------------------------------- chi tiet ngoai le
+
+@app.get("/api/exceptions/{exc_id}")
+def exception_detail(exc_id: int, p: Me) -> dict:
+    """Tat ca thu panel dieu tra can, trong MOT lan goi.
+
+    Quan trong nhat la `expected_version`: client phai gui lai dung so
+    nay khi ap so moi, neu khong khoa lac quan se tu choi.
+    """
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM qc_exception WHERE id = %s", (exc_id,))
+        exc = cur.fetchone()
+        if not exc:
+            raise HTTPException(404, f"khong co ngoai le {exc_id}")
+        if not p.unrestricted and exc["state"] not in p.scope_states:
+            raise HTTPException(403, f"ban khong co pham vi tren bang {exc['state']}")
+
+        key = (exc["year"], exc["state"], exc["gender"], exc["name"])
+        fact = override = None
+        history: list = []
+        if all(k is not None for k in key):
+            cur.execute(
+                """SELECT year, state, gender, name, run_id, number, market_share,
+                          prev_number, prev_year
+                   FROM fact_current
+                   WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
+            fact = cur.fetchone()
+            cur.execute(
+                """SELECT old_value, new_value, reason, version, created_by, created_at
+                   FROM fact_override
+                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'""", key)
+            override = cur.fetchone()
+            cur.execute(
+                """SELECT actor, action, before, after, created_at FROM audit_log
+                   WHERE entity_key = %s ORDER BY id DESC LIMIT 10""",
+                ("/".join(map(str, key)),))
+            history = cur.fetchall()
+
+        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at
+                       FROM signed_version ORDER BY id DESC LIMIT 1""")
+        signed = cur.fetchone()
+
+    return {"exception": exc, "fact": fact, "override": override,
+            "expected_version": override["version"] if override else 0,
+            "last_signed": signed, "history": history}
+
+
+# --------------------------------------------------------------- versions
+
+@app.get("/api/versions")
+def versions(p: Me, limit: int = Query(50, ge=1, le=200)) -> dict:
+    """Danh sach ban da ky — ai ky, luc nao, da gui cho ai."""
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("""SELECT id, run_id, label, row_count, signed_by, signed_at
+                       FROM signed_version ORDER BY id DESC LIMIT %s""", (limit,))
+        rows = cur.fetchall()
+        if rows:
+            cur.execute(
+                """SELECT signed_version_id, customer, sent_by, sent_at, file_path
+                   FROM versions_sent WHERE signed_version_id = ANY(%s)
+                   ORDER BY sent_at DESC""", ([r["id"] for r in rows],))
+            sent: dict[int, list] = {}
+            for s in cur.fetchall():
+                sent.setdefault(s.pop("signed_version_id"), []).append(s)
+            for r in rows:
+                r["sent"] = sent.get(r["id"], [])
+    return {"rows": rows, "can_sign": p.has("team_lead", "admin")}
+
+
+class SentBody(BaseModel):
+    customer: str = Field(min_length=2)
+    file_path: str | None = None
+
+
+@app.post("/api/versions/{version_id}/sent", status_code=201)
+def record_sent(version_id: int, body: SentBody, p: Me) -> dict:
+    """Ghi nhan da gui ban nao cho khach nao. Khong xoa duoc — day la
+    cau tra loi cho cau hoi 'so nay ho lay o dau ra'."""
+    p.require("sale", "team_lead", "admin")
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, label FROM signed_version WHERE id = %s", (version_id,))
+            sv = cur.fetchone()
+            if not sv:
+                raise HTTPException(404, f"khong co ban ky {version_id}")
+            cur.execute(
+                """INSERT INTO versions_sent (signed_version_id, customer, sent_by, file_path)
+                   VALUES (%s,%s,%s,%s) RETURNING id, sent_at""",
+                (version_id, body.customer.strip(), p.email, body.file_path))
+            row = cur.fetchone()
+            audit(cur, p.email, "send", "signed_version", str(version_id),
+                  None, {"customer": body.customer, "file_path": body.file_path})
+        conn.commit()
+    return {"id": row["id"], "signed_version_id": version_id,
+            "customer": body.customer, "sent_at": row["sent_at"].isoformat()}
+
+
+# ---------------------------------------------------------- export: danh sach
+
+@app.get("/api/exports")
+def list_exports(p: Me, limit: int = Query(50, ge=1, le=200)) -> dict:
+    """Job cua chinh minh. Admin va team lead nhin duoc tat ca."""
+    where, params = ("", []) if p.has("admin", "team_lead") else ("WHERE requested_by = %s", [p.email])
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(f"""SELECT id, run_id, status, requested_by, created_at,
+                               finished_at, gcs_path, error
+                        FROM export_job {where} ORDER BY id DESC LIMIT %s""", [*params, limit])
+        rows = cur.fetchall()
+    return {"rows": rows}
+
+
+@app.get("/api/exports/{job_id}/download")
+def download_export(job_id: int, p: Me) -> dict:
+    """Tra signed URL het han 15 phut.
+
+    Hai lop chan truoc khi phat link: job phai xong, va cong phat hanh
+    phai mo — file da sinh xong van khong duoc ra ngoai neu sau do co
+    ngoai le nghiem trong moi.
+    """
+    with db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT * FROM export_job WHERE id = %s", (job_id,))
+        job = cur.fetchone()
+        if not job:
+            raise HTTPException(404, f"khong co job {job_id}")
+        if job["requested_by"] != p.email and not p.has("admin", "team_lead"):
+            raise HTTPException(403, "khong phai job cua ban")
+        cur.execute(
+            "SELECT count(*) AS n FROM qc_exception WHERE status='open' AND severity='critical'")
+        if cur.fetchone()["n"]:
+            raise HTTPException(409, "cong phat hanh dang khoa, khong tai file duoc")
+
+    if job["status"] != "done" or not job["gcs_path"]:
+        raise HTTPException(409, f"job dang o trang thai '{job['status']}', chua co file")
+
+    return {"job_id": job_id, "url": signed_url(job["gcs_path"]),
+            "expires_in": 900, "gcs_path": job["gcs_path"]}
+
+
+def signed_url(gcs_path: str) -> str:
+    """Ky URL bang IAM SignBlob — service account tren Cloud Run khong
+    co private key nen khong ky offline duoc."""
+    try:
+        import google.auth
+        from google.auth.transport import requests as ga_requests
+        from google.cloud import storage
+
+        creds, _ = google.auth.default()
+        creds.refresh(ga_requests.Request())
+        blob = storage.Blob.from_string(gcs_path, client=storage.Client())
+        return blob.generate_signed_url(
+            version="v4", method="GET",
+            expiration=timedelta(minutes=15),
+            service_account_email=getattr(creds, "service_account_email", None),
+            access_token=creds.token,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"chua ky duoc URL: {exc}") from exc
+
+
+# ---------------------------------------------------------------- rebuild
+
+@app.post("/api/rebuild", status_code=202)
+def rebuild(p: Me) -> dict:
+    """Nap lai tu nguon — KHAC voi lam moi bang.
+
+    Lam moi bang chi goi lai API, doc ban sao Postgres, tuc thi.
+    Nap lai chay han Sync Job: doc lai tu BigQuery, dung bang staging,
+    doi ten. Ton thoi gian va cham vao nguon, nen chi team lead tro len
+    bam duoc va giao dien phai hoi lai truoc.
+    """
+    p.require("team_lead", "admin")
+    if not settings.gcp_project_id:
+        raise HTTPException(503, "chua cau hinh GCP_PROJECT_ID — chi chay duoc tren Cloud Run")
+
+    url = (f"https://run.googleapis.com/v2/projects/{settings.gcp_project_id}"
+           f"/locations/{settings.region}/jobs/{settings.sync_job_name}:run")
+    try:
+        import google.auth
+        from google.auth.transport.requests import AuthorizedSession
+
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        res = AuthorizedSession(creds).post(url, timeout=20)
+        if res.status_code >= 300:
+            raise HTTPException(502, f"Cloud Run tu choi: {res.status_code} {res.text[:300]}")
+        operation = res.json().get("name", "")
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"khong goi duoc Sync Job: {exc}") from exc
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            audit(cur, p.email, "rebuild", "sync_job", settings.sync_job_name, None,
+                  {"operation": operation})
+        conn.commit()
+    return {"job": settings.sync_job_name, "operation": operation,
+            "note": "Sync Job dang chay — banner do tuoi se doi khi xong"}

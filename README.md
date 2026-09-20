@@ -8,7 +8,7 @@ ban thiet ke day du.
 
 | Thu muc | Noi dung |
 |---|---|
-| `apps/web` | Next.js 16 + TypeScript — giao dien |
+| `apps/web` | Next.js 16 + TypeScript — giao dien, AG Grid + TanStack Query |
 | `apps/api` | FastAPI — phuc vu du lieu, phan quyen |
 | `jobs/sync` | BigQuery -> Cloud SQL, chay moi 60s (P2) |
 | `jobs/export` | Sinh Excel/CSV qua GCS + signed URL (P6) |
@@ -21,7 +21,9 @@ ban thiet ke day du.
 docker compose up --build
 ```
 
-http://localhost:3000 — ba dong phai xanh het.
+http://localhost:3000 — dashboard, luoi du lieu, hop thu ngoai le.
+Doi package.json thi phai dung `docker compose up -d --build --renew-anon-volumes web`,
+vi node_modules nam trong anonymous volume.
 
 ## Ha tang da dung (P1)
 
@@ -264,8 +266,101 @@ vi header do gia duoc neu goi thang vao URL run.app.
 ### Test
 
 ```bash
-cd apps/api && pytest tests -q     # 14 test
+cd apps/api && pytest tests -q     # 25 test
 ```
+
+## Giao dien (P4)
+
+Nam man hinh, mot thanh loc dung chung, moi thu doc tu API qua mot cong
+duy nhat.
+
+| Trang | Lam gi |
+|---|---|
+| `/` | Dashboard: o chi so, chenh lech so voi ban da ky, ngoai le theo luat va theo khu vuc, trang thai cong |
+| `/data` | Luoi 1,2 trieu dong bang AG Grid, cuon lien tuc |
+| `/exceptions` | Hop thu ngoai le + panel dieu tra ben phai |
+| `/versions` | Ban da ky: ai ky, luc nao, da gui cho khach nao |
+| `/requests` | Sale xin file, theo doi trang thai, tai ve khi xong |
+
+### Trinh duyet khong goi thang API
+
+`dataops-api` khong public: chi service account cua web goi duoc bang OIDC
+token. Trinh duyet khong co token do, nen moi request di qua route handler
+`apps/web/app/api/gw/[...path]/route.ts` — Next.js lay token tu metadata
+server roi goi tiep. Co IAP thi chuyen tiep nguyen assertion cua Google;
+chua co thi lay danh tinh tu cookie `dataops_as` (duong nay chi mo khi
+`REQUIRE_IAP=false`).
+
+### Luoi du lieu: vi sao Client-Side Row Model
+
+API phan trang theo keyset (cursor), khong theo offset — nen khong nhay
+den "dong thu 50.000" duoc, ma Infinite Row Model cua AG Grid lai can
+dung dieu do. Cach hop voi keyset la noi tiep cac slice 500 dong vao mot
+mang trong bo nho va de AG Grid ao hoa phan hien thi. Cuon gan cuoi thi
+`onBodyScrollEnd` tu goi slice sau.
+
+Cai gia phai noi ro voi nguoi dung, va giao dien co ghi: **bam tieu de cot
+chi sap xep trong so dong da tai**. Muon sap xep toan bo thi doi o "Sap
+xep toan bo" — cai do chay o server va nap lai tu dau.
+
+### Khoa lac quan nhin tu giao dien
+
+Panel dieu tra gui kem `expected_version`. Nhan 409 thi KHONG ghi de, ma
+hien ba con so — so goc, so tren may chu, so ban muon ghi — cung hai lua
+chon: *Tai lai dong* hoac *Ghi de co chu dich*. Ghi de la gui lai voi
+`expected_version` moi, tuc la nguoi dung chu dong chap nhan de len ban
+cua dong nghiep.
+
+### Hai nut de bam nham
+
+| Nut | Lam gi | Mat bao lau |
+|---|---|---|
+| **Lam moi bang** | goi lai API, doc ban sao Postgres | vai chuc ms |
+| **Nap lai tu nguon** | chay han Sync Job: doc lai BigQuery, staging, doi ten | 30–60s |
+
+Nut thu hai mau do, chi team lead tro len thay, va co mot buoc hoi lai.
+
+### Banner do tuoi
+
+Poll `/api/version` moi 30 giay. Thay `run_id` khac cai dang hien thi thi
+hien banner kem nut *Tai lai* — **khong tu lam moi**, vi nguoi dung co the
+dang go do dang trong panel dieu tra.
+
+### Endpoint P4 them vao
+
+| Method | Duong dan | Y nghia |
+|---|---|---|
+| GET | `/api/summary` | toan bo so lieu dashboard trong mot lan goi |
+| GET | `/api/options` | gia tri cho thanh loc — cung ap pham vi |
+| GET | `/api/exceptions/{id}` | chi tiet cho panel dieu tra, kem `expected_version` |
+| GET | `/api/versions` | ban da ky + da gui cho ai |
+| POST | `/api/versions/{id}/sent` | ghi nhan da gui cho khach |
+| GET | `/api/exports` | job cua chinh minh |
+| GET | `/api/exports/{id}/download` | signed URL 15 phut, chan khi cong khoa |
+| POST | `/api/rebuild` | kich hoat Sync Job (team_lead tro len) |
+
+### Kich ban da chay tron
+
+Chay tren docker compose local, du lieu that 1.222.947 dong:
+
+1. Dashboard bao 21 ngoai le nghiem trong, cong **KHOA**
+2. Mo mot ngoai le -> panel hien so cua lan nap canh ban da ky
+3. Sua so -> trong luc do nguoi khac ghi de o duoi database -> **409** kem
+   diff, so cua minh khong bi ghi
+4. Bam *Ghi de co chu dich* -> ghi thanh cong, `fact_override` len ban 2,
+   ngoai le chuyen `applied`, audit log ghi ca truoc lan sau
+5. Xu ly not 20 ngoai le con lai -> cong chuyen sang **SAN SANG**
+6. Team Lead ky "Ban thang 9 2026 - dot 1" -> vao `signed_version`
+7. Doi danh tinh sang sale -> xin file -> job vao hang doi `pending`
+
+Buoc cuoi (file tai ve duoc) can Export Job chay that — do la P5.
+
+### Con thieu so voi plan
+
+- Bo loc "cong ty" trong plan anh xa sang "ten" o bo du lieu nay
+  (`usa_names` khong co chieu cong ty).
+- Export Job chua dung lich chay, nen job dung o `pending`. Giao dien da
+  xu ly du bon trang thai `pending / running / done / error`.
 
 ## Terraform
 

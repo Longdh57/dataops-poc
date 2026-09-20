@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Suspense } from "react";
+
+import "./globals.css";
+import Providers from "./providers";
+import Shell from "./ui/shell";
 
 export const metadata: Metadata = {
   title: "Data Operations WebApp",
@@ -9,16 +14,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="vi">
-      <body
-        style={{
-          margin: 0,
-          fontFamily:
-            "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-          background: "#F5F7F9",
-          color: "#131A21",
-        }}
-      >
-        {children}
+      <body>
+        <Providers>
+          {/* Shell doc bo loc tu URL nen phai nam trong Suspense. */}
+          <Suspense fallback={<div className="page">Đang tải…</div>}>
+            <Shell>{children}</Shell>
+          </Suspense>
+        </Providers>
       </body>
     </html>
   );

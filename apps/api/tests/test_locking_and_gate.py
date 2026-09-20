@@ -12,19 +12,30 @@ from conftest import ADMIN, LEAD, TX, as_user
 URL = "postgresql://dataops:dataops@localhost:5432/dataops"
 
 
-def _mot_ngoai_le_dang_mo(state=None):
-    """Lay mot ngoai le open co du khoa tu nhien de sua duoc."""
-    where = "status='open' AND name IS NOT NULL AND year IS NOT NULL"
+def _mot_ngoai_le_dang_mo(state=None, chua_sua=False):
+    """Lay mot ngoai le open co du khoa tu nhien de sua duoc.
+
+    `chua_sua` bo qua nhung dong da co override: test khoa lac quan gia
+    dinh bat dau tu ban 0, ma chay lai lan hai thi dong cu da len ban 1.
+    """
+    where = "e.status='open' AND e.name IS NOT NULL AND e.year IS NOT NULL"
     if state:
-        where += f" AND state='{state}'"
+        where += f" AND e.state='{state}'"
+    if chua_sua:
+        where += " AND o.id IS NULL"
     with psycopg.connect(URL) as c, c.cursor() as cur:
-        cur.execute(f"SELECT id, year, state, gender, name FROM qc_exception WHERE {where} LIMIT 1")
+        cur.execute(f"""SELECT e.id, e.year, e.state, e.gender, e.name
+                        FROM qc_exception e
+                        LEFT JOIN fact_override o
+                          ON o.year=e.year AND o.state=e.state AND o.gender=e.gender
+                         AND o.name=e.name AND o.field='number'
+                        WHERE {where} LIMIT 1""")
         return cur.fetchone()
 
 
 def test_khoa_lac_quan_phien_sau_nhan_409(client):
-    exc = _mot_ngoai_le_dang_mo()
-    assert exc, "can it nhat mot ngoai le dang mo de test"
+    exc = _mot_ngoai_le_dang_mo(chua_sua=True)
+    assert exc, "can it nhat mot ngoai le dang mo chua bi sua de test"
     exc_id = exc[0]
 
     # Phien A sua truoc — thanh cong
@@ -59,6 +70,14 @@ def test_khoa_lac_quan_phien_sau_nhan_409(client):
                        WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'""",
                     exc[1:])
         assert cur.fetchone()[0] == "999", "phien B da ghi de mat du lieu cua phien A"
+
+        # Don dep: tra dong ve nguyen trang de chay lai duoc lan sau.
+        cur.execute("""DELETE FROM fact_override
+                       WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'""",
+                    exc[1:])
+        cur.execute("""UPDATE qc_exception SET status='open', resolved_at=NULL, resolved_by=NULL
+                       WHERE id=%s""", (exc_id,))
+        c.commit()
 
 
 def test_analyst_khong_sua_duoc_dong_ngoai_pham_vi(client):

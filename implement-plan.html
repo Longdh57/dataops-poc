@@ -717,6 +717,7 @@ footer p{max-width:70ch;margin:0 0 6px}
       <ul>
         <li><b>Khung ứng dụng</b>: thanh lọc (kỳ, phân khúc, khu vực, công ty), điều hướng theo tab, hiển thị danh tính người đăng nhập.</li>
         <li><b>Dashboard</b>: các ô chỉ số, chênh lệch so với bản đã ký gần nhất, số dòng bị gắn cờ, và <b>trạng thái cổng phát hành</b>.</li>
+        <li><b>Lưới dữ liệu</b> bằng AG Grid thay cho bảng HTML tĩnh 12 dòng: Client-Side Row Model, virtual scroll, sắp xếp tức thì trong slice đã tải; nối <code>next_cursor</code> của <code>/api/facts</code> (500 dòng mỗi lượt) để cuộn liên tục thay vì bấm sang trang.</li>
         <li><b>Hộp thư ngoại lệ</b> bằng AG Grid: luật, khoá, chi tiết, mức nghiêm trọng; bấm một dòng mở panel điều tra.</li>
         <li><b>Panel điều tra</b>: đặt <em>bản đã ký gần nhất</em> cạnh <em>lần nạp này</em>, ô nhập số mới, ba nút hành động, ô ghi lý do.</li>
         <li><b>Xử lý 409</b>: hiện diff và cho người dùng chọn tải lại hay ghi đè có chủ đích.</li>
