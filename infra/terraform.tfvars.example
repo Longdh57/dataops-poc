@@ -1,0 +1,14 @@
+project_id          = "dataops-poc-2026"
+region              = "asia-southeast1"
+env                 = "poc"
+api_service_account = "dataops-api@dataops-poc-2026.iam.gserviceaccount.com"
+web_service_account = "dataops-web@dataops-poc-2026.iam.gserviceaccount.com"
+
+# Bat CI/CD: dien 'owner/repo' cua GitHub
+github_repo = ""
+
+# Ai duoc mo ung dung qua IAP
+iap_members = [
+  # "user:ban@gmail.com",
+  # "group:dataops-users@googlegroups.com",
+]

@@ -1,0 +1,900 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Data Operations WebApp — Implementation Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#F5F7F9;
+  --surface:#FFFFFF;
+  --surface-2:#EDF1F4;
+  --line:#D4DCE3;
+  --line-soft:#E4EAEF;
+  --ink:#131A21;
+  --ink-2:#3C4853;
+  --muted:#6B7884;
+  --accent:#0F6B7B;
+  --accent-soft:#DCEEF1;
+  --ochre:#9A5F09;
+  --ochre-soft:#F7EBD8;
+  --good:#1C7A46;
+  --good-soft:#DDF0E4;
+  --warn:#9A5F09;
+  --crit:#A32B22;
+  --crit-soft:#F7E2E0;
+  --shadow:0 1px 2px rgba(19,26,33,.06), 0 8px 24px -16px rgba(19,26,33,.25);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1117;
+    --surface:#151B23;
+    --surface-2:#1D242E;
+    --line:#2C3644;
+    --line-soft:#232B36;
+    --ink:#E7ECF2;
+    --ink-2:#BCC7D3;
+    --muted:#8794A3;
+    --accent:#49AEC2;
+    --accent-soft:#12333B;
+    --ochre:#D9A055;
+    --ochre-soft:#3A2A11;
+    --good:#4CBE7D;
+    --good-soft:#14301F;
+    --warn:#D9A055;
+    --crit:#E4796E;
+    --crit-soft:#3A1B18;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 26px -18px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1117;
+  --surface:#151B23;
+  --surface-2:#1D242E;
+  --line:#2C3644;
+  --line-soft:#232B36;
+  --ink:#E7ECF2;
+  --ink-2:#BCC7D3;
+  --muted:#8794A3;
+  --accent:#49AEC2;
+  --accent-soft:#12333B;
+  --ochre:#D9A055;
+  --ochre-soft:#3A2A11;
+  --good:#4CBE7D;
+  --good-soft:#14301F;
+  --warn:#D9A055;
+  --crit:#E4796E;
+  --crit-soft:#3A1B18;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 26px -18px rgba(0,0,0,.8);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-size:15px;
+  line-height:1.6;
+}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:20px;padding-block:0 72px}
+
+/* ---------- header ---------- */
+.masthead{
+  border-bottom:1px solid var(--line);
+  background:var(--surface);
+}
+.masthead .wrap{padding-block:40px 30px}
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 14px;
+}
+h1{
+  font-size:clamp(28px,4.4vw,40px);line-height:1.15;margin:0 0 12px;
+  font-weight:600;letter-spacing:-.022em;text-wrap:balance;
+}
+.lede{font-size:17px;line-height:1.55;color:var(--ink-2);margin:0;max-width:62ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+  padding:5px 10px;border:1px solid var(--line);border-radius:5px;
+  background:var(--surface-2);color:var(--ink-2);
+}
+.chip b{font-weight:600;color:var(--ink)}
+
+/* ---------- nav ---------- */
+nav.toc{
+  position:sticky;top:env(safe-area-inset-top,0px);z-index:20;
+  background:color-mix(in srgb,var(--bg) 92%,transparent);
+  backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line-soft);
+}
+nav.toc .wrap{padding-block:0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
+nav.toc a{
+  flex:0 0 auto;padding:11px 12px;font-size:13px;color:var(--muted);
+  text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;
+}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:3px}
+
+/* ---------- sections ---------- */
+section{padding-block:44px 8px;scroll-margin-top:60px}
+section + section{border-top:1px solid var(--line-soft)}
+h2{
+  font-size:13px;font-family:"IBM Plex Mono",monospace;font-weight:600;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 6px;
+}
+h2 .num{color:var(--accent);margin-right:10px}
+.h2-title{font-size:clamp(21px,2.9vw,27px);font-weight:600;letter-spacing:-.018em;margin:0 0 20px;text-wrap:balance}
+h3{font-size:16px;font-weight:600;margin:32px 0 12px;letter-spacing:-.008em}
+h4{font-size:14px;font-weight:600;margin:22px 0 8px;color:var(--ink-2)}
+p{margin:0 0 14px;max-width:70ch}
+ul,ol{margin:0 0 14px;padding-left:20px;max-width:70ch}
+li{margin-bottom:6px}
+strong{font-weight:600}
+code{
+  font-family:"IBM Plex Mono",monospace;font-size:.87em;
+  background:var(--surface-2);padding:1.5px 5px;border-radius:4px;
+  border:1px solid var(--line-soft);
+}
+a{color:var(--accent)}
+
+/* ---------- cards / grids ---------- */
+.grid{display:grid;gap:14px;margin:18px 0 6px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(215px,1fr))}
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:9px;
+  padding:16px 17px;
+}
+.card h4{margin:0 0 7px;font-size:14px;color:var(--ink)}
+.card p{margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.card .tag{
+  display:block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;
+}
+
+.callout{
+  border-left:3px solid var(--accent);background:var(--accent-soft);
+  padding:14px 16px;border-radius:0 8px 8px 0;margin:20px 0;
+}
+.callout p{margin:0;font-size:14px;color:var(--ink)}
+.callout.warn{border-left-color:var(--warn);background:var(--ochre-soft)}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto;margin:18px 0 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:520px}
+thead th{
+  text-align:left;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;
+  padding:11px 14px;border-bottom:1px solid var(--line);background:var(--surface-2);
+  white-space:nowrap;
+}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top;color:var(--ink-2)}
+tbody tr:last-child td{border-bottom:none}
+tbody td:first-child{color:var(--ink);font-weight:500}
+td .mono,.mono{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.num-col{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ---------- badges ---------- */
+.b{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+  font-weight:600;letter-spacing:.06em;padding:2.5px 7px;border-radius:4px;white-space:nowrap;
+}
+.b-core{background:var(--accent-soft);color:var(--accent)}
+.b-must{background:var(--crit-soft);color:var(--crit)}
+.b-nice{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.b-ok{background:var(--good-soft);color:var(--good)}
+.b-warn{background:var(--ochre-soft);color:var(--ochre)}
+
+/* ---------- phases ---------- */
+.phase{
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  margin-bottom:14px;overflow:hidden;
+}
+.phase-head{
+  display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  padding:13px 17px;border-bottom:1px solid var(--line-soft);background:var(--surface-2);
+}
+.phase-id{
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:600;
+  color:var(--accent);letter-spacing:.06em;
+}
+.phase-name{font-weight:600;font-size:15px;flex:1 1 auto;min-width:160px}
+.phase-dur{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted)}
+.phase-body{padding:14px 17px 16px}
+.phase-body ul{margin:0;padding-left:18px;max-width:none}
+.phase-body li{font-size:13.5px;color:var(--ink-2);margin-bottom:7px}
+.phase-body li b{color:var(--ink);font-weight:500}
+.exit{
+  margin-top:13px;padding:10px 13px;border-radius:7px;
+  background:var(--good-soft);font-size:13px;color:var(--ink);
+}
+.exit .lbl{
+  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--good);font-weight:600;display:block;margin-bottom:3px;
+}
+
+/* ---------- figure ---------- */
+figure{margin:22px 0 10px}
+.figbox{
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:18px 14px;overflow-x:auto;
+}
+figure svg{display:block;width:100%;min-width:700px;height:auto}
+figcaption{font-size:12.5px;color:var(--muted);margin-top:10px;max-width:70ch}
+
+/* svg theming */
+.n{fill:var(--surface);stroke:var(--line);stroke-width:1.25}
+.n-acc{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+.n-src{fill:var(--surface-2);stroke:var(--ink-2);stroke-width:1.5}
+.t{fill:var(--ink);font-family:"IBM Plex Sans",sans-serif;font-size:13px;font-weight:600}
+.ts{fill:var(--muted);font-family:"IBM Plex Sans",sans-serif;font-size:11px;font-weight:400}
+.tl{fill:var(--ink-2);font-family:"IBM Plex Sans",sans-serif;font-size:10.5px}
+.tlm{fill:var(--ink-2);font-family:"IBM Plex Mono",monospace;font-size:10.5px}
+.ln{stroke:var(--ink-2);stroke-width:1.4;fill:none}
+.ln-d{stroke:var(--accent);stroke-width:1.4;fill:none;stroke-dasharray:5 4}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);margin-top:48px;padding-top:22px;font-size:12.5px;color:var(--muted)}
+footer p{max-width:70ch;margin:0 0 6px}
+
+@media (max-width:560px){
+  .masthead .wrap{padding-block:30px 24px}
+  section{padding-block:34px 6px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="eyebrow">Implementation Plan · v1.0</p>
+    <h1>Data Operations WebApp</h1>
+    <p class="lede">Ứng dụng nội bộ cho đội nghiên cứu dữ liệu: thay dashboard BI chỉ-đọc bằng một nơi vừa xem được số, vừa sửa được số, vừa chặn được số sai đi ra ngoài. Chạy trọn trên Google Cloud, BigQuery là nguồn sự thật.</p>
+    <div class="meta">
+      <span class="chip"><b>Scope</b> PoC · 1 dataset</span>
+      <span class="chip"><b>Users</b> 0–200 nội bộ</span>
+      <span class="chip"><b>Cloud</b> GCP</span>
+      <span class="chip"><b>Effort</b> ~21 ngày công</span>
+      <span class="chip"><b>Run cost</b> ~$12–17/tháng</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Mục lục">
+  <div class="wrap">
+    <a href="#overview">Overview</a>
+    <a href="#hld">High Level Design</a>
+    <a href="#components">Thành phần</a>
+    <a href="#workstreams">Công việc</a>
+    <a href="#tasks">Task</a>
+    <a href="#outcome">Kết quả</a>
+    <a href="#decisions">Quyết định &amp; rủi ro</a>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- ============ OVERVIEW ============ -->
+<section id="overview">
+  <h2><span class="num">01</span>Overview</h2>
+  <p class="h2-title">Nội dung cần triển khai</p>
+
+  <h3>Bối cảnh</h3>
+  <p>Dữ liệu thị trường được tổng hợp từ nhiều nguồn và nhiều người, luôn tồn tại chỗ sai hoặc thiếu. Việc soát lỗi, sửa số và duyệt trước khi phát hành hiện làm thủ công qua bảng tính và email — không có dấu vết ai sửa gì, không có cơ chế chặn một bản số liệu còn lỗi bị gửi ra ngoài.</p>
+  <p>Song song, team Data đang chuyển toàn bộ dữ liệu lên <strong>BigQuery</strong> làm kho trung tâm. Team Data vận hành độc lập: họ ghi vào BigQuery theo lịch riêng và không thông báo cho phía ứng dụng.</p>
+
+  <h3>Mục tiêu</h3>
+  <div class="grid g3">
+    <div class="card">
+      <span class="tag">Mục tiêu 1</span>
+      <h4>Đưa vòng đời dữ liệu vào một nơi</h4>
+      <p>Nạp → kiểm tra chất lượng → xử lý ngoại lệ → duyệt → phát hành → lưu phiên bản, tất cả trên cùng một ứng dụng.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Mục tiêu 2</span>
+      <h4>Mọi thao tác đều có dấu vết</h4>
+      <p>Ai sửa gì, lúc nào, vì sao. Truy ngược được từng con số về tận bản ghi nguồn và lần nạp sinh ra nó.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Mục tiêu 3</span>
+      <h4>Không để số sai ra ngoài</h4>
+      <p>Cổng phát hành khoá deliverable chừng nào còn ngoại lệ nghiêm trọng chưa xử lý. File gửi khách chỉ xuất từ bản đã ký.</p>
+    </div>
+  </div>
+
+  <h3>Phạm vi PoC</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Hạng mục</th><th>Trong phạm vi</th><th>Ngoài phạm vi</th></tr></thead>
+      <tbody>
+        <tr><td>Dataset</td><td>1 dataset ưu tiên, ~1 triệu dòng fact</td><td>Toàn bộ dataset của tổ chức</td></tr>
+        <tr><td>Pipeline nạp</td><td>Đọc từ BigQuery (đã có sẵn)</td><td>Xây pipeline Sheets → BigQuery (thuộc Data Engineer)</td></tr>
+        <tr><td>Người dùng</td><td>Analyst, Team Lead, Sale, Admin — nội bộ</td><td>Cổng cho khách hàng bên ngoài</td></tr>
+        <tr><td>QC</td><td>Rule engine khai báo bằng cấu hình</td><td>Agent AI tự soát (thuộc AI Engineer)</td></tr>
+        <tr><td>Deliverable</td><td>Excel / CSV xuất từ bản đã ký</td><td>PDF layout, slide tự sinh</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <p><strong>Ranh giới vai trò.</strong> Dự án này xây <em>màn hình + app API + hạ tầng truy cập</em>. Việc nạp dữ liệu vào BigQuery, mô hình hoá bảng fact và QC SQL thuộc về Data Engineer; agent QC bằng AI thuộc về AI Engineer. Ứng dụng <strong>tiêu thụ</strong> BigQuery chứ không ghi vào đó.</p>
+  </div>
+</section>
+
+<!-- ============ HLD ============ -->
+<section id="hld">
+  <h2><span class="num">02</span>High Level Design</h2>
+  <p class="h2-title">Kiến trúc hệ thống</p>
+
+  <p>Hai kho, hai vai trò rõ ràng: <strong>BigQuery là nguồn sự thật</strong> — đọc và tính toán; <strong>Cloud SQL là nơi ghi và chịu trách nhiệm</strong> — bản sao phục vụ giao diện, cùng với override, trạng thái ngoại lệ, phân quyền và audit. Giao diện đọc Cloud SQL để có độ trễ vài chục mili-giây; chỉ luồng xuất file gửi khách mới chạm thẳng BigQuery.</p>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 580" role="img" aria-label="Sơ đồ kiến trúc: người dùng đi qua IAP vào Cloud Run Web và API; API đọc Cloud SQL cho mọi thao tác giao diện và chỉ chạm BigQuery khi kiểm tra metadata hoặc xuất file; Cloud Scheduler kích hoạt Cloud Run Jobs poll metadata BigQuery mỗi 60 giây rồi đồng bộ qua Cloud Storage về Cloud SQL bằng thao tác đổi tên bảng nguyên tử.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--ink-2)"></path>
+          </marker>
+          <marker id="ara" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--accent)"></path>
+          </marker>
+        </defs>
+
+        <!-- Users -->
+        <rect class="n" x="24" y="24" width="250" height="50" rx="8"></rect>
+        <text class="t" x="40" y="46">Researcher · Team Lead · Sale</text>
+        <text class="ts" x="40" y="63">20–200 người dùng nội bộ</text>
+
+        <!-- IAP -->
+        <rect class="n-acc" x="24" y="104" width="250" height="46" rx="8"></rect>
+        <text class="t" x="40" y="124">IAP</text>
+        <text class="ts" x="40" y="140">Google Workspace group · authentication</text>
+
+        <!-- Web -->
+        <rect class="n" x="24" y="180" width="250" height="62" rx="8"></rect>
+        <text class="t" x="40" y="202">Cloud Run · Web</text>
+        <text class="ts" x="40" y="219">React + TS · AG Grid</text>
+        <text class="ts" x="40" y="234">TanStack Query · Chart</text>
+
+        <!-- API -->
+        <rect class="n" x="330" y="180" width="270" height="62" rx="8"></rect>
+        <text class="t" x="346" y="202">Cloud Run · API</text>
+        <text class="ts" x="346" y="219">FastAPI · verify IAP JWT</text>
+        <text class="ts" x="346" y="234">authorization theo role + scope</text>
+
+        <!-- BigQuery -->
+        <rect class="n-src" x="656" y="180" width="280" height="76" rx="8"></rect>
+        <text class="t" x="672" y="202">BigQuery</text>
+        <text class="ts" x="672" y="219">Nguồn sự thật · fact tables</text>
+        <text class="ts" x="672" y="234">team Data ghi, độc lập</text>
+        <text class="ts" x="672" y="249">~1M dòng · ~400 MB</text>
+
+        <!-- Cloud SQL -->
+        <rect class="n" x="330" y="300" width="270" height="92" rx="8"></rect>
+        <text class="t" x="346" y="322">Cloud SQL · PostgreSQL</text>
+        <text class="ts" x="346" y="339">fact_current (bản sao đọc)</text>
+        <text class="ts" x="346" y="354">fact_override · qc_exception</text>
+        <text class="ts" x="346" y="369">app_role · signed_version</text>
+        <text class="ts" x="346" y="384">audit_log · sync_state</text>
+
+        <!-- GCS -->
+        <rect class="n" x="656" y="310" width="280" height="62" rx="8"></rect>
+        <text class="t" x="672" y="332">Cloud Storage</text>
+        <text class="ts" x="672" y="349">staging parquet · file export</text>
+        <text class="ts" x="672" y="364">signed URL, hết hạn 15 phút</text>
+
+        <!-- Scheduler -->
+        <rect class="n" x="24" y="452" width="250" height="50" rx="8"></rect>
+        <text class="t" x="40" y="474">Cloud Scheduler</text>
+        <text class="ts" x="40" y="491">kích hoạt mỗi 60 giây</text>
+
+        <!-- Jobs -->
+        <rect class="n" x="330" y="440" width="270" height="74" rx="8"></rect>
+        <text class="t" x="346" y="462">Cloud Run Jobs</text>
+        <text class="ts" x="346" y="479">Sync Job — BigQuery → Cloud SQL</text>
+        <text class="ts" x="346" y="494">Export Job — sinh file deliverable</text>
+
+        <!-- arrows -->
+        <line class="ln" x1="149" y1="74" x2="149" y2="100" marker-end="url(#ar)"></line>
+        <line class="ln" x1="149" y1="150" x2="149" y2="176" marker-end="url(#ar)"></line>
+        <line class="ln" x1="274" y1="205" x2="326" y2="205" marker-end="url(#ar)"></line>
+        <text class="tlm" x="300" y="197" text-anchor="middle">REST</text>
+
+        <line class="ln" x1="450" y1="242" x2="450" y2="296" marker-end="url(#ar)"></line>
+        <text class="tl" x="460" y="264">mọi thao tác giao diện</text>
+        <text class="tl" x="460" y="278">sort · filter · trang · chart</text>
+
+        <line class="ln-d" x1="600" y1="200" x2="652" y2="200" marker-end="url(#ara)"></line>
+        <text class="tlm" x="626" y="163" text-anchor="middle">metadata</text>
+        <text class="tlm" x="626" y="176" text-anchor="middle">+ export</text>
+
+        <line class="ln" x1="796" y1="256" x2="796" y2="306" marker-end="url(#ar)"></line>
+        <text class="tlm" x="806" y="286">EXPORT DATA</text>
+
+        <polyline class="ln" points="656,341 628,341 628,477 604,477" marker-end="url(#ar)"></polyline>
+        <text class="tlm" x="636" y="408">COPY</text>
+        <text class="tlm" x="636" y="422">staging</text>
+
+        <line class="ln" x1="450" y1="440" x2="450" y2="396" marker-end="url(#ar)"></line>
+        <text class="tl" x="460" y="420">đổi tên bảng nguyên tử</text>
+
+        <line class="ln" x1="274" y1="477" x2="326" y2="477" marker-end="url(#ar)"></line>
+        <text class="tlm" x="300" y="469" text-anchor="middle">60s</text>
+
+        <polyline class="ln-d" points="465,514 465,548 944,548 944,214 940,214" marker-end="url(#ara)"></polyline>
+        <text class="tlm" x="560" y="542">poll last_modified_time</text>
+        <text class="tl" x="708" y="542">— truy vấn metadata, không tính phí</text>
+      </svg>
+    </div>
+    <figcaption>Đường liền là luồng chạy thường xuyên; đường đứt màu nhấn là hai lần duy nhất hệ thống chạm BigQuery — kiểm tra metadata (miễn phí) và xuất file gửi khách. Giao diện không bao giờ query BigQuery trực tiếp.</figcaption>
+  </figure>
+
+  <h3>Ba luồng dữ liệu chính</h3>
+  <div class="grid g3">
+    <div class="card">
+      <span class="tag">Luồng 1 · Browse</span>
+      <h4>Xem và thao tác</h4>
+      <p>Người dùng lọc, sắp xếp, cuộn, sửa số. Toàn bộ đọc từ Cloud SQL. Độ trễ ~20–50ms, không phát sinh chi phí query. Không chạm BigQuery.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Luồng 2 · Sync</span>
+      <h4>Đồng bộ dữ liệu</h4>
+      <p>Job poll <code>last_modified_time</code> mỗi 60s. Khi đổi: <code>EXPORT DATA</code> ra parquet trên GCS, <code>COPY</code> vào bảng staging, đổi tên nguyên tử. Không downtime.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Luồng 3 · Export</span>
+      <h4>Xuất file gửi khách</h4>
+      <p>Bất đồng bộ. Query thẳng BigQuery, ghi song song ra GCS, trả signed URL. Ghi lại phiên bản dữ liệu tại thời điểm xuất.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPONENTS ============ -->
+<section id="components">
+  <h2><span class="num">03</span>Danh sách thành phần</h2>
+  <p class="h2-title">Từng thành phần và ý nghĩa</p>
+
+  <h3>Ứng dụng</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:23%">Thành phần</th><th style="width:20%">Công nghệ</th><th>Ý nghĩa trong hệ thống</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Web</td>
+          <td class="mono">React + TypeScript<br>Next.js</td>
+          <td>Giao diện người dùng: dashboard, hộp thư ngoại lệ, panel đối chiếu, quản lý phiên bản. Chạy trên Cloud Run.</td>
+        </tr>
+        <tr>
+          <td>Bảng dữ liệu</td>
+          <td class="mono">AG Grid Community</td>
+          <td>Lưới dữ liệu chính. Client-Side Row Model giữ cả slice trong bộ nhớ, virtual scroll, sửa ô tại chỗ. Bản Community đủ cho quy mô này.</td>
+        </tr>
+        <tr>
+          <td>Quản lý dữ liệu phía client</td>
+          <td class="mono">TanStack Query</td>
+          <td>Cache theo <code>queryKey</code>, refetch, giữ dữ liệu cũ khi đang tải bản mới. Là nơi quyết định khi nào gọi lại API.</td>
+        </tr>
+        <tr>
+          <td>Biểu đồ</td>
+          <td class="mono">Chart.js / Recharts</td>
+          <td>KPI tile và biểu đồ tổng hợp trên dashboard. Dữ liệu là kết quả đã <code>GROUP BY</code> sẵn ở backend.</td>
+        </tr>
+        <tr>
+          <td>API</td>
+          <td class="mono">Python · FastAPI</td>
+          <td>Xác minh IAP JWT, phân quyền theo role và phạm vi quốc gia, phục vụ dữ liệu từ Cloud SQL, điều phối job export. Chạy trên Cloud Run.</td>
+        </tr>
+        <tr>
+          <td>Rule engine</td>
+          <td class="mono">YAML + SQL</td>
+          <td>Bộ luật kiểm tra chất lượng khai báo bằng cấu hình (tổng thị phần, năm trước có năm nay trống, thiếu số lượng…). Sinh danh sách ngoại lệ cho người dùng xử lý.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Dữ liệu</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:23%">Thành phần</th><th style="width:20%">Dịch vụ</th><th>Ý nghĩa trong hệ thống</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Nguồn sự thật</td>
+          <td class="mono">BigQuery</td>
+          <td>Bảng fact do team Data ghi. Ứng dụng chỉ đọc. Là căn cứ duy nhất cho con số gửi khách.</td>
+        </tr>
+        <tr>
+          <td>Kho phục vụ giao diện</td>
+          <td class="mono">Cloud SQL<br>PostgreSQL</td>
+          <td>Bản sao <code>fact_current</code> để đọc nhanh, cộng với toàn bộ dữ liệu chỉ tồn tại ở ứng dụng: override, trạng thái ngoại lệ, phân quyền, phiên bản đã ký, lịch sử gửi khách, audit log, trạng thái đồng bộ.</td>
+        </tr>
+        <tr>
+          <td>Kho file</td>
+          <td class="mono">Cloud Storage</td>
+          <td>Nơi <code>EXPORT DATA</code> ghi parquet staging cho job sync, và nơi chứa file deliverable đã sinh để phát signed URL.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Truy cập và bảo mật</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:23%">Thành phần</th><th style="width:20%">Dịch vụ</th><th>Ý nghĩa trong hệ thống</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Authentication</td>
+          <td class="mono">IAP<br>(gắn thẳng Cloud Run)</td>
+          <td>Chặn ở cửa: chỉ tài khoản trong Google Workspace group mới mở được ứng dụng. Không viết dòng code đăng nhập nào. Thêm hoặc bớt người dùng = sửa thành viên group.</td>
+        </tr>
+        <tr>
+          <td>Authorization</td>
+          <td class="mono">Bảng trong Postgres</td>
+          <td>Vào rồi làm được gì: analyst / team lead / sale / admin, và phạm vi quốc gia được xem. Quyền nghiệp vụ đổi thường xuyên nên không đặt trong IAM.</td>
+        </tr>
+        <tr>
+          <td>Quyền của dịch vụ</td>
+          <td class="mono">IAM + service account</td>
+          <td>Mỗi service và job có service account riêng, quyền tối thiểu. API được đọc BigQuery và Cloud SQL; Export Job được ghi GCS.</td>
+        </tr>
+        <tr>
+          <td>Bí mật</td>
+          <td class="mono">Secret Manager</td>
+          <td>Connection string, khoá. Không có mật khẩu nào nằm trong code hay biến môi trường lộ thiên.</td>
+        </tr>
+        <tr>
+          <td>Tên miền &amp; TLS</td>
+          <td class="mono">Cloud Run domain mapping<br>DNS ở Cloudflare</td>
+          <td>Chứng chỉ do Google cấp và tự gia hạn. Bản ghi CNAME ở Cloudflare để chế độ <em>DNS only</em>, không proxy, nếu không sẽ không cấp được chứng chỉ.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Vận hành</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:23%">Thành phần</th><th style="width:20%">Dịch vụ</th><th>Ý nghĩa trong hệ thống</th></tr></thead>
+      <tbody>
+        <tr><td>Job nền</td><td class="mono">Cloud Run Jobs</td><td>Sync Job và Export Job. Tách khỏi đường request nên không làm người dùng phải chờ và không bị timeout.</td></tr>
+        <tr><td>Lịch chạy</td><td class="mono">Cloud Scheduler</td><td>Kích hoạt Sync Job kiểm tra metadata BigQuery mỗi 60 giây.</td></tr>
+        <tr><td>CI/CD</td><td class="mono">GitHub Actions →<br>Cloud Build</td><td>Push code → lint và test → build image → Artifact Registry → deploy staging → migration → smoke test → duyệt → prod. Xác thực bằng Workload Identity Federation, không lưu key.</td></tr>
+        <tr><td>Kho image</td><td class="mono">Artifact Registry</td><td>Chứa image của web, api và job.</td></tr>
+        <tr><td>Giám sát</td><td class="mono">Cloud Logging<br>Cloud Monitoring</td><td>Log tập trung theo <code>run_id</code>. Cảnh báo quan trọng nhất: Sync Job trễ quá ngưỡng — bản sao cũ mà không ai biết là rủi ro lớn nhất của kiến trúc này.</td></tr>
+        <tr><td>Hạ tầng dạng code</td><td class="mono">Terraform</td><td>Toàn bộ hạ tầng khai báo bằng code, state trên GCS. Dựng lại nguyên trạng cho dataset hoặc dự án khác trong ~15 phút.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ WORKSTREAMS ============ -->
+<section id="workstreams">
+  <h2><span class="num">04</span>Công việc cần triển khai</h2>
+  <p class="h2-title">Sáu nhóm công việc</p>
+
+  <div class="grid g2">
+    <div class="card">
+      <span class="tag">WS1 · Nền tảng</span>
+      <h4>Hạ tầng &amp; đường vào</h4>
+      <p>Dựng GCP project, Cloud SQL, Cloud Run, bật IAP trực tiếp trên Cloud Run, gắn tên miền và TLS, thiết lập CI/CD và Terraform. Kết thúc khi mở được URL thật và bị chặn nếu ngoài group.</p>
+    </div>
+    <div class="card">
+      <span class="tag">WS2 · Dữ liệu</span>
+      <h4>Mô hình &amp; đồng bộ</h4>
+      <p>Thiết kế schema Postgres, xây Sync Job phát hiện thay đổi ở BigQuery bằng metadata, đồng bộ qua GCS và đổi tên bảng nguyên tử, đặt cảnh báo khi đồng bộ trễ.</p>
+    </div>
+    <div class="card">
+      <span class="tag">WS3 · Phân quyền</span>
+      <h4>Danh tính &amp; quyền nghiệp vụ</h4>
+      <p>Xác minh IAP JWT, dựng bảng role và scope, middleware áp phạm vi quốc gia vào mọi truy vấn. Không bao giờ nhận phạm vi từ tham số phía client.</p>
+    </div>
+    <div class="card">
+      <span class="tag">WS4 · Nghiệp vụ</span>
+      <h4>Rule engine &amp; vòng duyệt</h4>
+      <p>Bộ luật QC khai báo bằng cấu hình, vòng đời ngoại lệ <em>mở → sửa / gác lại / trả về</em>, khoá lạc quan chống hai người sửa cùng lúc, cổng phát hành và cơ chế ký phiên bản.</p>
+    </div>
+    <div class="card">
+      <span class="tag">WS5 · Giao diện</span>
+      <h4>Màn hình làm việc</h4>
+      <p>Dashboard, hộp thư ngoại lệ, panel đối chiếu bản đã ký với lần nạp này, trang phiên bản, trang theo dõi yêu cầu dữ liệu, banner báo có dữ liệu mới.</p>
+    </div>
+    <div class="card">
+      <span class="tag">WS6 · Deliverable</span>
+      <h4>Xuất file &amp; truy vết</h4>
+      <p>Export bất đồng bộ qua <code>EXPORT DATA</code> → GCS → signed URL, ghi nhận đã gửi bản nào cho khách nào ngày nào, chặn tải file khi cổng còn khoá.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TASKS ============ -->
+<section id="tasks">
+  <h2><span class="num">05</span>Task cần làm</h2>
+  <p class="h2-title">Chia theo giai đoạn</p>
+  <p>Tổng ~21 ngày công cho một người. Mỗi giai đoạn có điều kiện kết thúc rõ ràng để không trôi.</p>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P0</span>
+      <span class="phase-name">Chuẩn bị</span>
+      <span class="phase-dur">2 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Tạo GCP project</b>, bật billing, kích hoạt credit dùng thử, đặt <b>Budget Alert ở $10</b> ngay từ đầu.</li>
+        <li><b>Bật API</b>: Cloud Run, Cloud SQL Admin, BigQuery, Cloud Storage, Cloud Build, Artifact Registry, IAP, Secret Manager, Cloud Scheduler.</li>
+        <li><b>Tạo Google Workspace group</b> cho người dùng thử nghiệm, thêm 2–3 tài khoản với vai trò khác nhau.</li>
+        <li><b>Khởi tạo repo</b> dạng mono: <code>apps/web</code>, <code>apps/api</code>, <code>jobs/</code>, <code>infra/</code>, <code>rules/</code>.</li>
+        <li><b>Terraform backend</b> trên GCS + khung module trống.</li>
+        <li><b>Docker Compose local</b>: Postgres + API + Web để phát triển không tốn tiền cloud.</li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Chạy được <code>docker compose up</code> ra trang trắng có gọi API thành công; Terraform <code>plan</code> chạy sạch.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P1</span>
+      <span class="phase-name">Hạ tầng &amp; đường vào</span>
+      <span class="phase-dur">3 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Artifact Registry</b> và image nền cho web / api / job.</li>
+        <li><b>Cloud SQL PostgreSQL</b>: <code>db-f1-micro</code>, chỉ private IP, HDD 10GB, zonal (không HA), backup giữ 2 ngày.</li>
+        <li><b>Serverless VPC Access connector</b> để Cloud Run nối tới Cloud SQL qua mạng riêng.</li>
+        <li><b>Deploy hai service Cloud Run</b> phiên bản tối thiểu, xác nhận gọi được nhau.</li>
+        <li><b>Bật IAP trực tiếp trên Cloud Run</b> (<code>--iap</code>), cấp <code>roles/run.invoker</code> cho IAP service agent, gán group vào <code>roles/iap.httpsResourceAccessor</code>.</li>
+        <li><b>Domain mapping</b> cho <code>app.&lt;domain&gt;</code>; thêm CNAME ở Cloudflare ở chế độ <b>DNS only</b>.</li>
+        <li><b>CI/CD</b>: GitHub Actions → Cloud Build qua Workload Identity Federation; pipeline staging → prod có bước duyệt tay.</li>
+        <li><b>Secret Manager</b> cho connection string; gắn vào Cloud Run.</li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Mở <code>https://app.&lt;domain&gt;</code> bằng tài khoản trong group thì vào được; tài khoản ngoài group bị chặn ở màn hình của Google, không chạm tới ứng dụng. Push code lên <code>main</code> tự deploy được.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P2</span>
+      <span class="phase-name">Dữ liệu &amp; đồng bộ</span>
+      <span class="phase-dur">4 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Dựng dataset mẫu trên BigQuery</b>: bảng fact ~1 triệu dòng, partition theo <code>run_id</code> hoặc ngày, cluster theo các cột lọc thường dùng.</li>
+        <li><b>Schema Postgres</b>: <code>fact_current</code>, <code>fact_override</code>, <code>qc_exception</code>, <code>app_user</code>, <code>app_role</code>, <code>signed_version</code>, <code>versions_sent</code>, <code>export_job</code>, <code>sync_state</code>, <code>audit_log</code>. Migration bằng Alembic.</li>
+        <li><b>Sync Job — bước phát hiện</b>: đọc <code>last_modified_time</code> và <code>row_count</code> từ <code>__TABLES__</code> / <code>INFORMATION_SCHEMA.PARTITIONS</code>. Truy vấn metadata không quét dữ liệu nên không tính phí.</li>
+        <li><b>Sync Job — bước nạp</b>: <code>EXPORT DATA</code> ra parquet trên GCS → <code>COPY</code> vào bảng staging → đổi tên trong transaction. Không downtime.</li>
+        <li><b>Cloud Scheduler</b> gọi Sync Job mỗi 60 giây.</li>
+        <li><b>Index</b> trên các cột dùng để lọc và sắp xếp; kiểm chứng bằng <code>EXPLAIN ANALYZE</code>.</li>
+        <li><b>Cảnh báo</b> khi <code>last_synced_at</code> quá 30 phút.</li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Thêm một run mới vào BigQuery, trong vòng 2 phút bảng Postgres phản ánh đúng, số dòng khớp, và không có request nào bị lỗi trong lúc đổi bảng.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P3</span>
+      <span class="phase-name">API &amp; phân quyền</span>
+      <span class="phase-dur">4 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Xác minh IAP JWT assertion</b> ở mọi request — chống việc gọi thẳng vào Cloud Run bỏ qua IAP.</li>
+        <li><b>Middleware phân quyền</b>: email → <code>app_user</code> → vai trò và phạm vi quốc gia; ép điều kiện phạm vi vào mọi truy vấn ở tầng server.</li>
+        <li><b>GET <code>/api/facts</code></b> — lọc, sắp xếp (allowlist tên cột), phân trang theo keyset, merge override từ Postgres.</li>
+        <li><b>GET <code>/api/exceptions</code></b> và <b>PATCH <code>/api/exceptions/{id}</code></b> — hành động <code>apply</code> / <code>park</code> / <code>send_back</code>, ghi override, đóng ngoại lệ và ghi audit <b>trong cùng một transaction</b>.</li>
+        <li><b>Khoá lạc quan</b>: mỗi dòng có <code>version</code>; xung đột trả 409 kèm diff để người dùng quyết định.</li>
+        <li><b>POST <code>/api/release</code></b> — chỉ Team Lead; kiểm tra không còn ngoại lệ nghiêm trọng mở, đóng băng thành <code>signed_version</code>.</li>
+        <li><b>POST <code>/api/exports</code></b> trả 202 + <code>job_id</code>; <b>GET <code>/api/exports/{id}</code></b> trả trạng thái và signed URL khi xong.</li>
+        <li><b>GET <code>/api/version</code></b> — trả <code>run_id</code> hiện tại và <code>last_synced_at</code> cho banner độ tươi.</li>
+        <li><b>Test</b>: phân quyền theo phạm vi, xung đột khoá lạc quan, cổng phát hành.</li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Tài khoản analyst phạm vi Thái Lan gọi API với tham số quốc gia khác vẫn chỉ nhận được dữ liệu Thái Lan. Hai phiên sửa cùng một dòng thì phiên sau nhận 409, không ghi đè.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P4</span>
+      <span class="phase-name">Giao diện</span>
+      <span class="phase-dur">5 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Khung ứng dụng</b>: thanh lọc (kỳ, phân khúc, khu vực, công ty), điều hướng theo tab, hiển thị danh tính người đăng nhập.</li>
+        <li><b>Dashboard</b>: các ô chỉ số, chênh lệch so với bản đã ký gần nhất, số dòng bị gắn cờ, và <b>trạng thái cổng phát hành</b>.</li>
+        <li><b>Hộp thư ngoại lệ</b> bằng AG Grid: luật, khoá, chi tiết, mức nghiêm trọng; bấm một dòng mở panel điều tra.</li>
+        <li><b>Panel điều tra</b>: đặt <em>bản đã ký gần nhất</em> cạnh <em>lần nạp này</em>, ô nhập số mới, ba nút hành động, ô ghi lý do.</li>
+        <li><b>Xử lý 409</b>: hiện diff và cho người dùng chọn tải lại hay ghi đè có chủ đích.</li>
+        <li><b>Trang phiên bản</b>: danh sách bản đã ký, ai ký, khi nào, đã gửi cho ai.</li>
+        <li><b>Trang yêu cầu dữ liệu</b> cho sale: gửi yêu cầu, theo dõi trạng thái, tải file khi sẵn sàng.</li>
+        <li><b>Banner độ tươi</b>: poll <code>/api/version</code> mỗi 30 giây; có run mới thì hiện nút tải lại, <b>không tự động làm mới</b>.</li>
+        <li><b>Phân biệt rõ</b> hai nút <em>Refresh view</em> và <em>Rebuild</em> để tránh bấm nhầm.</li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Chạy trọn kịch bản: mở dashboard thấy N ngoại lệ → xử lý hết → cổng chuyển từ khoá sang sẵn sàng → Team Lead ký → sale tải được file.</div>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-id">P5</span>
+      <span class="phase-name">Hoàn thiện &amp; bàn giao</span>
+      <span class="phase-dur">3 ngày</span>
+    </div>
+    <div class="phase-body">
+      <ul>
+        <li><b>Rule engine ra file cấu hình</b>: mỗi luật có id, mức nghiêm trọng, phạm vi, biểu thức, thông điệp. Thêm luật mới không cần sửa code.</li>
+        <li><b>Export Job</b>: sinh Excel và CSV; cảnh báo khi vượt <b>1.048.576 dòng</b> — giới hạn một sheet Excel — và tự đề xuất tách file.</li>
+        <li><b>Chặn tải file</b> khi cổng phát hành còn khoá.</li>
+        <li><b>Giám sát</b>: uptime check, cảnh báo lỗi job, dashboard theo dõi độ trễ đồng bộ.</li>
+        <li><b>Terraform hoá toàn bộ</b>; xác nhận dựng lại từ đầu vào một project sạch.</li>
+        <li><b>Runbook</b>: refresh khác rebuild ra sao, xử lý khi sync lỗi, cách quay lại phiên bản trước, cách thêm người dùng.</li>
+        <li><b>Dữ liệu demo + kịch bản trình bày 5 phút.</b></li>
+      </ul>
+      <div class="exit"><span class="lbl">Điều kiện kết thúc</span>Dựng lại toàn bộ hệ thống từ project trống bằng <code>terraform apply</code> và một lần deploy, không thao tác tay.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ OUTCOME ============ -->
+<section id="outcome">
+  <h2><span class="num">06</span>Kết quả cần đạt được</h2>
+  <p class="h2-title">Sau khi triển khai</p>
+
+  <h3>Sản phẩm bàn giao</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:30%">Hạng mục</th><th>Nội dung</th></tr></thead>
+      <tbody>
+        <tr><td>Ứng dụng đang chạy</td><td>URL thật có HTTPS, đăng nhập bằng tài khoản tổ chức, phục vụ được 0–200 người dùng.</td></tr>
+        <tr><td>Mã nguồn</td><td>Một repo gồm web, api, jobs, rules và toàn bộ hạ tầng dạng Terraform.</td></tr>
+        <tr><td>Pipeline CI/CD</td><td>Push lên <code>main</code> tự deploy staging; lên prod qua một bước duyệt; quay lui bằng chuyển traffic.</td></tr>
+        <tr><td>Tài liệu</td><td>Sơ đồ kiến trúc, mô tả mô hình dữ liệu, runbook vận hành, hướng dẫn thêm dataset mới.</td></tr>
+        <tr><td>Mẫu tái sử dụng</td><td>Quy trình dựng lại cho dataset khác trong khoảng 15 phút — đúng yêu cầu <em>repeatable migration pattern</em>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Tiêu chí nghiệm thu</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:40%">Tiêu chí</th><th style="width:22%">Ngưỡng</th><th>Cách kiểm chứng</th></tr></thead>
+      <tbody>
+        <tr><td>Chặn truy cập trái phép</td><td><span class="b b-must">Bắt buộc</span></td><td>Tài khoản ngoài group không mở được ứng dụng, kể cả khi biết URL <code>run.app</code>.</td></tr>
+        <tr><td>Phạm vi dữ liệu theo người dùng</td><td><span class="b b-must">Bắt buộc</span></td><td>Sửa tham số trên URL không lấy được dữ liệu ngoài phạm vi được gán.</td></tr>
+        <tr><td>Độ trễ giao diện</td><td class="mono">&lt; 300 ms (p95)</td><td>Nạp bảng và đổi bộ lọc, đo từ log của Cloud Run.</td></tr>
+        <tr><td>Sắp xếp và cuộn</td><td class="mono">tức thì</td><td>Không phát sinh request khi sort trong slice đã tải.</td></tr>
+        <tr><td>Độ trễ đồng bộ</td><td class="mono">&lt; 2 phút</td><td>Từ lúc BigQuery đổi tới lúc giao diện phản ánh.</td></tr>
+        <tr><td>Xuất file 1 triệu dòng</td><td class="mono">&lt; 2 phút</td><td>Bấm export, đo tới lúc có signed URL.</td></tr>
+        <tr><td>Cổng phát hành</td><td><span class="b b-must">Bắt buộc</span></td><td>Còn ngoại lệ nghiêm trọng mở thì không ai tải được file.</td></tr>
+        <tr><td>Truy vết</td><td><span class="b b-must">Bắt buộc</span></td><td>Mọi con số truy ngược được về <code>run_id</code>; mọi thao tác có tên người và thời điểm.</td></tr>
+        <tr><td>Chống ghi đè</td><td><span class="b b-core">Lõi</span></td><td>Hai phiên sửa cùng dòng: phiên sau nhận 409 kèm diff.</td></tr>
+        <tr><td>Dựng lại từ đầu</td><td class="mono">&lt; 30 phút</td><td><code>terraform apply</code> vào project trống rồi deploy.</td></tr>
+        <tr><td>Chi phí vận hành</td><td class="mono">&lt; $20/tháng</td><td>Báo cáo billing sau 30 ngày chạy.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Chi phí vận hành dự kiến</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Thành phần</th><th class="num-col">Ước tính / tháng</th><th>Ghi chú</th></tr></thead>
+      <tbody>
+        <tr><td>Cloud Run — web + api</td><td class="num-col mono">$0–3</td><td>Scale-to-zero; 20 người dùng nội bộ gần như không tốn</td></tr>
+        <tr><td>Cloud Run Jobs</td><td class="num-col mono">&lt; $1</td><td>Sync 60s + export vài lần/ngày</td></tr>
+        <tr><td>Cloud SQL <code>db-f1-micro</code> + 10GB</td><td class="num-col mono">$10–12</td><td>Thành phần duy nhất không scale-to-zero được</td></tr>
+        <tr><td>BigQuery</td><td class="num-col mono">$0</td><td>Metadata miễn phí; truy vấn nằm dưới hạn mức miễn phí hàng tháng</td></tr>
+        <tr><td>Cloud Storage</td><td class="num-col mono">&lt; $1</td><td>Vài GB staging và file export</td></tr>
+        <tr><td>IAP + TLS</td><td class="num-col mono">$0</td><td>Gắn thẳng Cloud Run, không cần Load Balancer</td></tr>
+        <tr><td>Cloud Build</td><td class="num-col mono">$0</td><td>Trong hạn mức miễn phí</td></tr>
+        <tr><td><strong>Tổng</strong></td><td class="num-col mono"><strong>$12–17</strong></td><td>Tắt Cloud SQL ngoài giờ làm đưa xuống ~$4</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Thay đổi cho người dùng</h3>
+  <div class="grid g2">
+    <div class="card">
+      <span class="tag">Analyst</span>
+      <p>Không còn mở hàng chục workbook để dò lỗi. Hệ thống chỉ đích danh từng ô đáng ngờ kèm số đối chiếu, sửa ngay trên web, mọi quyết định đều có tên và lý do.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Team Lead</span>
+      <p>Nhìn một màn hình biết còn bao nhiêu việc chưa xong và có được phát hành hay chưa. Ký một lần, bản số liệu đóng băng vĩnh viễn.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Sale</span>
+      <p>Tự lấy file mà không phải đi xin, và chỉ lấy được bản đã qua kiểm duyệt. Tra lại được đã gửi bản nào cho khách nào ngày nào.</p>
+    </div>
+    <div class="card">
+      <span class="tag">Tổ chức</span>
+      <p>Không còn khả năng gửi nhầm một bản số liệu còn lỗi cho khách hàng. Ba tháng sau vẫn tái tạo được đúng con số đã gửi.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DECISIONS ============ -->
+<section id="decisions">
+  <h2><span class="num">07</span>Quyết định &amp; rủi ro</h2>
+  <p class="h2-title">Những lựa chọn định hình kiến trúc</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:26%">Quyết định</th><th style="width:30%">Phương án bị loại</th><th>Lý do</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>IAP gắn thẳng Cloud Run</td>
+          <td>HTTPS Load Balancer + IAP</td>
+          <td>Load Balancer tốn khoảng $18/tháng cố định, chạy 24/7 kể cả không ai dùng — vô lý với ứng dụng 20 người trên nền scale-to-zero. Giữ phương án LB trong Terraform để bật lại khi cần Cloud Armor hoặc multi-region.</td>
+        </tr>
+        <tr>
+          <td>Hai kho: BigQuery đọc, Postgres ghi</td>
+          <td>Chỉ dùng BigQuery</td>
+          <td>BigQuery không có transaction và cập nhật từng dòng hiệu quả, nên không làm được audit trail và override. Ngoài ra cần JOIN dữ liệu fact với override và trạng thái ngoại lệ — hai thứ chỉ tồn tại ở ứng dụng.</td>
+        </tr>
+        <tr>
+          <td>Phát hiện thay đổi bằng metadata</td>
+          <td>Nhờ team Data thông báo</td>
+          <td>Team Data vận hành độc lập. <code>last_modified_time</code> cho biết bảng đã đổi, truy vấn metadata không quét dữ liệu nên miễn phí. Không phụ thuộc vào quy trình của người khác.</td>
+        </tr>
+        <tr>
+          <td>Full sync + đổi tên nguyên tử</td>
+          <td>Sync incremental theo watermark</td>
+          <td>Ở mức 400MB, full sync mất 1–3 phút và không bao giờ lệch. Sync incremental bỏ sót dòng bị xoá và phụ thuộc vào cách team Data ghi — thứ hiện chưa nắm được. Chuyển sang incremental khi full sync vượt 10 phút.</td>
+        </tr>
+        <tr>
+          <td>Export bất đồng bộ qua GCS</td>
+          <td>Trả file trực tiếp trong HTTP response</td>
+          <td>1 triệu dòng không thể đi qua một response. <code>EXPORT DATA</code> để BigQuery ghi song song thẳng vào GCS, ứng dụng không bao giờ giữ file trong bộ nhớ.</td>
+        </tr>
+        <tr>
+          <td>Người dùng chủ động tải lại</td>
+          <td>Tự động làm mới dữ liệu</td>
+          <td>Analyst đang gõ số mà bảng đổi dưới chân họ là lỗi nghiêm trọng, không phải tính năng. Hệ thống báo có dữ liệu mới và để người dùng quyết định thời điểm.</td>
+        </tr>
+        <tr>
+          <td>AG Grid Community</td>
+          <td>AG Grid Enterprise</td>
+          <td>Slice làm việc thực tế chỉ vài nghìn dòng, Client-Side Row Model xử lý thoải mái. Chỉ cần Enterprise khi muốn pivot và group phía server — chưa thuộc phạm vi PoC.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Rủi ro</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th style="width:28%">Rủi ro</th><th style="width:14%">Mức</th><th>Cách giảm thiểu</th></tr></thead>
+      <tbody>
+        <tr><td>Sync Job chết âm thầm, bản sao cũ mà không ai biết</td><td><span class="b b-must">Cao</span></td><td>Cảnh báo khi <code>last_synced_at</code> quá ngưỡng; hiển thị thời điểm dữ liệu ngay trên giao diện; luồng export luôn đi thẳng BigQuery nên số gửi khách không phụ thuộc bản sao.</td></tr>
+        <tr><td>Team Data đổi schema ở BigQuery</td><td><span class="b b-warn">Trung bình</span></td><td>Sync Job kiểm tra schema trước khi nạp và dừng có báo lỗi thay vì nạp sai; giữ bảng cũ cho tới khi bảng mới hợp lệ.</td></tr>
+        <tr><td>Cloudflare bật proxy làm hỏng cấp chứng chỉ</td><td><span class="b b-warn">Trung bình</span></td><td>Đặt bản ghi ở chế độ DNS only; nếu bắt buộc proxy thì dùng Certificate Manager với DNS authorization.</td></tr>
+        <tr><td>Dữ liệu vượt quá quy mô dự kiến</td><td><span class="b b-nice">Thấp</span></td><td>Chuyển sang Infinite Row Model với phân trang keyset trên Postgres; bật BI Engine nếu cần độ trễ thấp ổn định trên BigQuery.</td></tr>
+        <tr><td>Vượt giới hạn 1.048.576 dòng của Excel</td><td><span class="b b-nice">Thấp</span></td><td>Kiểm tra số dòng trước khi sinh file; tự tách sheet hoặc chuyển sang CSV, báo rõ cho người dùng.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <p><strong>Data Operations WebApp — Implementation Plan v1.0</strong></p>
+  <p>Tài liệu kỹ thuật nội bộ. Các con số chi phí là ước tính theo bảng giá công bố tại thời điểm soạn thảo và cần kiểm tra lại trước khi đưa vào đề xuất chính thức.</p>
+</footer>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,34 @@
+# Bo luat QC khai bao bang cau hinh — them luat moi khong can sua code (P5).
+# Moi luat: id, severity, scope, expression (SQL boolean), message.
+# expression = TRUE nghia la dong do VI PHAM luat.
+
+version: 1
+
+rules:
+  - id: market_share_sum
+    severity: critical
+    scope: [period, segment, region]
+    expression: "ABS(SUM(market_share) - 1.0) > 0.005"
+    message: "Tong thi phan cua nhom lech qua 0.5% so voi 100%"
+
+  - id: prior_year_orphan
+    severity: critical
+    scope: [company, segment]
+    expression: "prev_year_value IS NOT NULL AND current_value IS NULL"
+    message: "Nam truoc co so nhung nam nay bo trong"
+
+  - id: missing_quantity
+    severity: warning
+    scope: [row]
+    expression: "revenue > 0 AND (quantity IS NULL OR quantity = 0)"
+    message: "Co doanh thu nhung thieu so luong"
+
+  - id: yoy_outlier
+    severity: warning
+    scope: [company, segment]
+    expression: "prev_year_value > 0 AND ABS(current_value / prev_year_value - 1) > 3"
+    message: "Bien dong so voi nam truoc vuot 300%"
+
+# Chi severity=critical moi khoa cong phat hanh.
+gate:
+  blocking_severities: [critical]

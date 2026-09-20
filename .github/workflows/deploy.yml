@@ -1,0 +1,102 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Bat buoc cho Workload Identity Federation: GitHub phai duoc cap OIDC token.
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: ${{ vars.GCP_REGION }}
+  REGISTRY: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/dataops
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Dang nhap Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build va push API
+        run: |
+          docker build -t "$REGISTRY/api:${{ steps.meta.outputs.tag }}" apps/api
+          docker push "$REGISTRY/api:${{ steps.meta.outputs.tag }}"
+
+      - name: Build va push Web
+        run: |
+          docker build --target runner -t "$REGISTRY/web:${{ steps.meta.outputs.tag }}" apps/web
+          docker push "$REGISTRY/web:${{ steps.meta.outputs.tag }}"
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Deploy API
+        run: |
+          gcloud run deploy dataops-api \
+            --image "$REGISTRY/api:${{ needs.build.outputs.tag }}" \
+            --region "$REGION" --project "$PROJECT_ID" --quiet
+
+      - name: Deploy Web
+        run: |
+          gcloud run deploy dataops-web \
+            --image "$REGISTRY/web:${{ needs.build.outputs.tag }}" \
+            --region "$REGION" --project "$PROJECT_ID" --quiet
+
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe dataops-web --region "$REGION" \
+                  --project "$PROJECT_ID" --format='value(status.url)')
+          # IAP chan request khong xac thuc — 302/401/403 la DUNG, 5xx moi la hong.
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+          echo "web tra ve HTTP $CODE"
+          case "$CODE" in 2*|3*|401|403) echo "OK";; *) echo "LOI"; exit 1;; esac
+
+  deploy-prod:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    # Dat required reviewer cho environment nay trong Settings -> Environments
+    # de co buoc duyet tay truoc khi len prod.
+    environment: production
+    steps:
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.DEPLOYER_SA }}
+
+      - uses: google-github-actions/setup-gcloud@v3
+
+      - name: Chuyen traffic sang ban moi
+        run: |
+          echo "PoC dung chung mot project; prod = chuyen 100% traffic."
+          gcloud run services update-traffic dataops-web \
+            --to-latest --region "$REGION" --project "$PROJECT_ID" --quiet
+          gcloud run services update-traffic dataops-api \
+            --to-latest --region "$REGION" --project "$PROJECT_ID" --quiet

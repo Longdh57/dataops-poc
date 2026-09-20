@@ -1,0 +1,54 @@
+# Moi truong phat trien local — khong ton tien cloud.
+# Postgres o day thay cho Cloud SQL; BigQuery van dung that qua ADC.
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: dataops
+      POSTGRES_PASSWORD: dataops
+      POSTGRES_DB: dataops
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dataops -d dataops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./apps/api
+    environment:
+      DATABASE_URL: postgresql://dataops:dataops@db:5432/dataops
+      CORS_ORIGINS: http://localhost:3000
+      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-dataops-poc-2026}
+      # ADC cua may host mount vao container de goi BigQuery that
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
+    volumes:
+      - ./apps/api/app:/srv/app:ro
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/adc.json:ro
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      target: dev
+    environment:
+      # server-side fetch chay TRONG container -> dung ten service, khong phai localhost
+      API_URL: http://api:8080
+    volumes:
+      - ./apps/web/app:/srv/app
+      - /srv/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
