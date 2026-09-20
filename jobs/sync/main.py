@@ -14,6 +14,7 @@ Chay duoc ca local (docker compose) lan tren Cloud Run Jobs.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -181,16 +182,31 @@ def atomic_swap(conn: psycopg.Connection) -> None:
     log("doi ten nguyen tu xong")
 
 
+def source_run_ids(conn: psycopg.Connection) -> list[str]:
+    """Nhung lan nap du lieu (run_id do team Data dat) dang co trong ban sao.
+
+    Doc tu Postgres chu khong tu BigQuery: sau khi swap, bang fact_current
+    CHINH LA thu vua nap, nen day la cau tra loi chinh xac va ton 0 dong
+    chi phi query. Ky phat hanh se dong bang danh sach nay, va Export Job
+    loc theo no de file gui khach khong dinh lan nap chua ai duyet.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT run_id FROM fact_current ORDER BY run_id")
+        return [r[0] for r in cur.fetchall()]
+
+
 def write_sync_state(conn: psycopg.Connection, run_id: str, rows: int,
                      src_mod: datetime, src_rows: int, status: str = "ok",
-                     error: str | None = None) -> None:
+                     error: str | None = None,
+                     data_run_ids: list[str] | None = None) -> None:
     with conn.cursor() as cur:
         cur.execute(
             """
             INSERT INTO sync_state
                 (id, last_run_id, last_synced_at, last_row_count,
-                 source_last_modified, source_row_count, status, last_error)
-            VALUES (1, %s, now(), %s, %s, %s, %s, %s)
+                 source_last_modified, source_row_count, status, last_error,
+                 source_run_ids)
+            VALUES (1, %s, now(), %s, %s, %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 last_run_id = EXCLUDED.last_run_id,
                 last_synced_at = EXCLUDED.last_synced_at,
@@ -198,9 +214,11 @@ def write_sync_state(conn: psycopg.Connection, run_id: str, rows: int,
                 source_last_modified = EXCLUDED.source_last_modified,
                 source_row_count = EXCLUDED.source_row_count,
                 status = EXCLUDED.status,
-                last_error = EXCLUDED.last_error
+                last_error = EXCLUDED.last_error,
+                source_run_ids = COALESCE(EXCLUDED.source_run_ids, sync_state.source_run_ids)
             """,
-            (run_id, rows, src_mod, src_rows, status, error),
+            (run_id, rows, src_mod, src_rows, status, error,
+             json.dumps(data_run_ids) if data_run_ids is not None else None),
         )
     conn.commit()
 
@@ -238,7 +256,10 @@ def main() -> int:
                 raise RuntimeError(f"So dong lech: nap {rows:,} nhung nguon co {src_rows:,}")
 
             atomic_swap(conn)
-            write_sync_state(conn, run_id, rows, src_mod, src_rows, "ok")
+            data_runs = source_run_ids(conn)
+            write_sync_state(conn, run_id, rows, src_mod, src_rows, "ok",
+                             data_run_ids=data_runs)
+            log(f"ban sao dang giu {len(data_runs)} lan nap: {', '.join(data_runs)}")
             log(f"XONG · {rows:,} dong · {time.monotonic() - started:.1f}s")
             return 0
         except Exception as exc:  # noqa: BLE001

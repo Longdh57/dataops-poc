@@ -49,6 +49,39 @@ def audit(cur, actor: str, action: str, entity: str, key: str,
     )
 
 
+def run_job(job_name: str, env: dict[str, str] | None = None) -> tuple[bool, str]:
+    """Kich hoat mot Cloud Run Job, tra ve (co chay khong, giai thich).
+
+    KHONG nem exception: ca hai cho goi den day deu da ghi xong viec cua
+    minh vao database. Goi duoc thi tot, khong goi duoc — chay local, chua
+    deploy job, thieu quyen — thi cong viec van nam trong hang doi cho lan
+    chay sau, va nguoi dung duoc noi ro thay vi mat trang.
+    """
+    if not settings.gcp_project_id:
+        return False, "chua cau hinh GCP_PROJECT_ID — job khong duoc kich hoat tu dong"
+
+    url = (f"https://run.googleapis.com/v2/projects/{settings.gcp_project_id}"
+           f"/locations/{settings.region}/jobs/{job_name}:run")
+    body: dict = {}
+    if env:
+        body = {"overrides": {"containerOverrides": [
+            {"env": [{"name": k, "value": v} for k, v in env.items()]}]}}
+
+    try:
+        import google.auth
+        from google.auth.transport.requests import AuthorizedSession
+
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"])
+        res = AuthorizedSession(creds).post(url, json=body, timeout=20)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"khong goi duoc {job_name}: {exc}"
+
+    if res.status_code >= 300:
+        return False, f"Cloud Run tu choi {job_name}: {res.status_code} {res.text[:200]}"
+    return True, res.json().get("name", "")
+
+
 def encode_cursor(row: dict, sort: str) -> str:
     payload = {"s": row[sort], **{k: row[k] for k in NATURAL_KEY}}
     return base64.urlsafe_b64encode(json.dumps(payload, default=str).encode()).decode()
@@ -357,22 +390,30 @@ def release(body: ReleaseBody, p: Me) -> dict:
                     "ngoai_le_nghiem_trong_con_mo": blocking,
                 })
 
-            cur.execute("SELECT last_run_id, last_row_count FROM sync_state WHERE id=1")
+            cur.execute("""SELECT last_run_id, last_row_count, source_run_ids
+                           FROM sync_state WHERE id=1""")
             st = cur.fetchone()
             if not st or not st["last_run_id"]:
                 raise HTTPException(409, "chua co lan dong bo nao de ky")
 
+            # Dong bang danh sach lan nap du lieu. Thieu no thi Export Job
+            # khong biet ban ky nay gom nhung gi, va se xuat ca nhung lan
+            # nap den sau khi ky.
             cur.execute(
-                """INSERT INTO signed_version (run_id, label, row_count, signed_by)
-                   VALUES (%s,%s,%s,%s) RETURNING id, signed_at""",
-                (st["last_run_id"], body.label, st["last_row_count"], p.email))
+                """INSERT INTO signed_version
+                       (run_id, source_run_ids, label, row_count, signed_by)
+                   VALUES (%s,%s,%s,%s,%s) RETURNING id, signed_at""",
+                (st["last_run_id"], json.dumps(st["source_run_ids"]),
+                 body.label, st["last_row_count"], p.email))
             sv = cur.fetchone()
-            audit(cur, p.email, "release", "signed_version", str(sv["id"]),
-                  None, {"run_id": st["last_run_id"], "label": body.label})
+            audit(cur, p.email, "release", "signed_version", str(sv["id"]), None,
+                  {"run_id": st["last_run_id"], "label": body.label,
+                   "source_run_ids": st["source_run_ids"]})
         conn.commit()
 
     return {"id": sv["id"], "run_id": st["last_run_id"], "label": body.label,
-            "row_count": st["last_row_count"], "signed_at": sv["signed_at"].isoformat()}
+            "row_count": st["last_row_count"], "source_run_ids": st["source_run_ids"],
+            "signed_at": sv["signed_at"].isoformat()}
 
 
 @app.get("/api/gate")
@@ -398,6 +439,12 @@ class ExportBody(BaseModel):
 
 @app.post("/api/exports", status_code=202)
 def create_export(body: ExportBody, p: Me) -> dict:
+    """Xep hang mot yeu cau xuat file roi kich hoat Export Job.
+
+    Ba thu duoc CHOT NGAY tai day chu khong doi luc job chay: ban ky nao,
+    dinh dang gi, pham vi cua ai. Nguoi xin bi doi pham vi ngay hom sau
+    thi file da phat van giai thich duoc bang dung mot dong trong bang.
+    """
     if body.format not in {"csv", "xlsx"}:
         raise HTTPException(400, "format phai la csv hoac xlsx")
 
@@ -408,20 +455,38 @@ def create_export(body: ExportBody, p: Me) -> dict:
             if cur.fetchone()["n"]:
                 raise HTTPException(409, "cong phat hanh dang khoa, khong tai file duoc")
 
-            cur.execute("SELECT last_run_id FROM sync_state WHERE id=1")
-            st = cur.fetchone()
+            # File gui khach CHI duoc xuat tu ban da ky.
+            cur.execute("""SELECT id, run_id, label, source_run_ids
+                           FROM signed_version ORDER BY id DESC LIMIT 1""")
+            sv = cur.fetchone()
+            if not sv:
+                raise HTTPException(409, "chua co ban nao duoc ky — khong co gi de xuat")
+            if not sv["source_run_ids"]:
+                raise HTTPException(
+                    409,
+                    f"ban ky '{sv['label']}' khong ghi lai duoc nhung lan nap nao nam trong do; "
+                    "chay lai Sync Job roi ky lai truoc khi xuat file")
+
+            scope = None if p.unrestricted else sorted(p.scope_states)
             cur.execute(
-                """INSERT INTO export_job (run_id, status, requested_by)
-                   VALUES (%s, 'pending', %s) RETURNING id, created_at""",
-                (st["last_run_id"] if st else "?", p.email))
+                """INSERT INTO export_job
+                       (run_id, signed_version_id, format, scope_states, status, requested_by)
+                   VALUES (%s, %s, %s, %s, 'pending', %s)
+                   RETURNING id, created_at""",
+                (sv["run_id"], sv["id"], body.format,
+                 json.dumps(scope) if scope else None, p.email))
             job = cur.fetchone()
-            audit(cur, p.email, "export_request", "export_job", str(job["id"]),
-                  None, {"format": body.format})
+            audit(cur, p.email, "export_request", "export_job", str(job["id"]), None,
+                  {"format": body.format, "signed_version_id": sv["id"], "scope": scope})
         conn.commit()
+
+    triggered, note = run_job(settings.export_job_name, {"EXPORT_JOB_ID": str(job["id"])})
 
     return {"job_id": job["id"], "status": "pending",
             "created_at": job["created_at"].isoformat(),
-            "note": "Export Job thuc thi o P6"}
+            "signed_version": {"id": sv["id"], "label": sv["label"]},
+            "format": body.format, "scope": scope,
+            "triggered": triggered, "note": note}
 
 
 @app.get("/api/exports/{job_id}")
@@ -434,6 +499,9 @@ def get_export(job_id: int, p: Me) -> dict:
     if job["requested_by"] != p.email and not p.has("admin", "team_lead"):
         raise HTTPException(403, "khong phai job cua ban")
     return {"job_id": job["id"], "status": job["status"], "run_id": job["run_id"],
+            "format": job["format"], "scope_states": job["scope_states"],
+            "row_count": job["row_count"], "warning": job["warning"],
+            "signed_version_id": job["signed_version_id"],
             "gcs_path": job["gcs_path"], "error": job["error"]}
 
 
@@ -670,9 +738,14 @@ def list_exports(p: Me, limit: int = Query(50, ge=1, le=200)) -> dict:
     """Job cua chinh minh. Admin va team lead nhin duoc tat ca."""
     where, params = ("", []) if p.has("admin", "team_lead") else ("WHERE requested_by = %s", [p.email])
     with db() as conn, conn.cursor() as cur:
-        cur.execute(f"""SELECT id, run_id, status, requested_by, created_at,
-                               finished_at, gcs_path, error
-                        FROM export_job {where} ORDER BY id DESC LIMIT %s""", [*params, limit])
+        cur.execute(f"""SELECT e.id, e.run_id, e.status, e.requested_by, e.created_at,
+                               e.finished_at, e.gcs_path, e.error, e.format,
+                               e.scope_states, e.row_count, e.warning,
+                               e.signed_version_id, v.label AS signed_label
+                        FROM export_job e
+                        LEFT JOIN signed_version v ON v.id = e.signed_version_id
+                        {where.replace("requested_by", "e.requested_by")}
+                        ORDER BY e.id DESC LIMIT %s""", [*params, limit])
         rows = cur.fetchall()
     return {"rows": rows}
 
@@ -737,30 +810,17 @@ def rebuild(p: Me) -> dict:
     bam duoc va giao dien phai hoi lai truoc.
     """
     p.require("team_lead", "admin")
-    if not settings.gcp_project_id:
-        raise HTTPException(503, "chua cau hinh GCP_PROJECT_ID — chi chay duoc tren Cloud Run")
 
-    url = (f"https://run.googleapis.com/v2/projects/{settings.gcp_project_id}"
-           f"/locations/{settings.region}/jobs/{settings.sync_job_name}:run")
-    try:
-        import google.auth
-        from google.auth.transport.requests import AuthorizedSession
-
-        creds, _ = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        res = AuthorizedSession(creds).post(url, timeout=20)
-        if res.status_code >= 300:
-            raise HTTPException(502, f"Cloud Run tu choi: {res.status_code} {res.text[:300]}")
-        operation = res.json().get("name", "")
-    except HTTPException:
-        raise
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(503, f"khong goi duoc Sync Job: {exc}") from exc
+    triggered, note = run_job(settings.sync_job_name)
+    if not triggered:
+        # Khac voi export: o day khong co gi nam trong hang doi ca, khong
+        # goi duoc job nghia la khong co gi xay ra — phai bao that.
+        raise HTTPException(503, note)
 
     with db() as conn:
         with conn.cursor() as cur:
             audit(cur, p.email, "rebuild", "sync_job", settings.sync_job_name, None,
-                  {"operation": operation})
+                  {"operation": note})
         conn.commit()
-    return {"job": settings.sync_job_name, "operation": operation,
+    return {"job": settings.sync_job_name, "operation": note,
             "note": "Sync Job dang chay — banner do tuoi se doi khi xong"}

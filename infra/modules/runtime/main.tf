@@ -77,6 +77,24 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.project_id
       }
 
+      # API kich hoat hai job nay. Truyen ten tu Terraform chu khong de API
+      # doan theo mac dinh: doi ten job ben nay ma ben kia khong biet thi
+      # nut bam se hong lang le.
+      env {
+        name  = "REGION"
+        value = var.region
+      }
+
+      env {
+        name  = "SYNC_JOB_NAME"
+        value = google_cloud_run_v2_job.sync.name
+      }
+
+      env {
+        name  = "EXPORT_JOB_NAME"
+        value = google_cloud_run_v2_job.export.name
+      }
+
       # Phai di cung iap_enabled: bat REQUIRE_IAP khi IAP chua bat thi
       # moi request deu 401 vi khong co assertion nao ca.
       env {
@@ -189,12 +207,12 @@ resource "google_cloud_run_v2_service_iam_member" "public_web" {
 
 locals {
   job_env = {
-    GCP_PROJECT_ID  = var.project_id
-    BQ_DATASET      = var.bq_dataset
-    BQ_TABLE        = "fact_names"
-    BQ_LOCATION     = var.region
-    STAGING_BUCKET  = var.staging_bucket
-    WORKDIR         = "/tmp/sync"
+    GCP_PROJECT_ID = var.project_id
+    BQ_DATASET     = var.bq_dataset
+    BQ_TABLE       = "fact_names"
+    BQ_LOCATION    = var.region
+    STAGING_BUCKET = var.staging_bucket
+    WORKDIR        = "/tmp/sync"
   }
 }
 
@@ -421,4 +439,159 @@ resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker_qc" {
   name     = google_cloud_run_v2_job.qc.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.jobs_service_account}"
+}
+
+# --- Export Job: sinh file deliverable tu ban da ky ---
+#
+# Khong co Scheduler nao goi job nay: API kich hoat truc tiep khi co nguoi
+# bam "Gui yeu cau", kem EXPORT_JOB_ID de job chi xu ly dung yeu cau do.
+# Poll dinh ky se lam nguoi dung cho vo co toi vai phut du hang doi rong.
+
+resource "google_cloud_run_v2_job" "export" {
+  project             = var.project_id
+  name                = "dataops-export"
+  location            = var.region
+  labels              = var.labels
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = var.jobs_service_account
+      max_retries     = 0 # job tu ghi trang thai 'error' vao DB, retry chi ton tien
+      timeout         = "1800s"
+
+      vpc_access {
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image   = var.jobs_image
+        command = ["python"]
+        args    = ["export/main.py"]
+
+        dynamic "env" {
+          for_each = local.job_env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        # Sinh xlsx cho ca trieu dong can nhieu RAM hon CSV.
+        resources {
+          limits = { cpu = "2", memory = "4Gi" }
+        }
+      }
+    }
+  }
+
+  depends_on = [terraform_data.secret_gate]
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+}
+
+# API la thu kich hoat Export Job va Sync Job, nen no phai duoc phep chay
+# hai job do. Day la quyen duy nhat API co tren Cloud Run.
+resource "google_cloud_run_v2_job_iam_member" "api_invoke_export" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.export.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.api_service_account}"
+}
+
+resource "google_cloud_run_v2_job_iam_member" "api_invoke_sync" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.sync.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.api_service_account}"
+}
+
+# --- Seed: nguoi dung thu nghiem va du lieu demo ---
+#
+# Khong co Scheduler. Chay tay dung mot lan khi dung moi truong moi:
+#   gcloud run jobs execute dataops-seed --region=<region>
+#
+# Mac dinh chi seed nguoi dung. Muon dung luon bang fact demo tren BigQuery
+# thi them --update-env-vars=SEED_BIGQUERY=1 — buoc do thuoc ve Data
+# Engineer o du an that.
+
+resource "google_cloud_run_v2_job" "seed" {
+  project             = var.project_id
+  name                = "dataops-seed"
+  location            = var.region
+  labels              = var.labels
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = var.jobs_service_account
+      max_retries     = 0
+      timeout         = "1800s"
+
+      vpc_access {
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image   = var.jobs_image
+        command = ["python"]
+        args    = ["seed/main.py"]
+
+        dynamic "env" {
+          for_each = local.job_env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        env {
+          name  = "OWNER_EMAIL"
+          value = var.owner_email
+        }
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        resources {
+          limits = { cpu = "1", memory = "1Gi" }
+        }
+      }
+    }
+  }
+
+  depends_on = [terraform_data.secret_gate]
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
 }

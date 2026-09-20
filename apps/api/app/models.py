@@ -137,6 +137,11 @@ class SignedVersion(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Danh sach run_id CUA DU LIEU (team Data dat) co trong ban ky nay.
+    # Khac han run_id o tren: cai do la nhan mot luot dong bo do Sync Job
+    # tu sinh. Export phai loc theo danh sach nay, neu khong file gui khach
+    # se chua ca nhung lan nap chua ai duyet.
+    source_run_ids: Mapped[list | None] = mapped_column(JSON)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     row_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
     checksum: Mapped[str | None] = mapped_column(String(64))
@@ -158,15 +163,30 @@ class VersionsSent(Base):
 
 
 class ExportJob(Base):
+    """Mot yeu cau xuat file. Job nen chay sau, khong nam tren duong request.
+
+    Ba cot duoi day quyet dinh NOI DUNG file, va deu duoc chot o thoi diem
+    xin file chu khong phai luc job chay: ban ky nao, dinh dang gi, va pham
+    vi cua nguoi xin. Nguoi xin bi doi pham vi sau do thi file da phat ra
+    van giai thich duoc.
+    """
     __tablename__ = "export_job"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    signed_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("signed_version.id", ondelete="RESTRICT"))
+    format: Mapped[str] = mapped_column(String(8), nullable=False, default="csv")
+    # rong/NULL = khong gioi han bang
+    scope_states: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     requested_by: Mapped[str] = mapped_column(String(320), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     gcs_path: Mapped[str | None] = mapped_column(Text)
+    row_count: Mapped[int | None] = mapped_column(BigInteger)
+    # Canh bao khong lam job that bai — vi du vuot gioi han dong cua Excel.
+    warning: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -181,6 +201,9 @@ class SyncState(Base):
     # dau van tay cua nguon: last_modified_time cua bang BigQuery
     source_last_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_row_count: Mapped[int | None] = mapped_column(BigInteger)
+    # Nhung run_id cua du lieu dang nam trong ban sao. Ky phat hanh se
+    # dong bang danh sach nay vao signed_version.
+    source_run_ids: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
     last_error: Mapped[str | None] = mapped_column(Text)
 

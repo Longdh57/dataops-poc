@@ -71,3 +71,54 @@ resource "google_project_iam_member" "iap_access" {
   role     = "roles/iap.httpsResourceAccessor"
   member   = each.value
 }
+
+# --- Service account cho tung thanh phan chay ---
+#
+# Ba tai khoan nay truoc do tao bang gcloud, nam ngoai Terraform. Dua vao
+# day de dung lai he thong tu project trong chi can terraform apply.
+#
+# Du an dang chay phai `terraform import` chung mot lan truoc khi apply —
+# xem scripts/import-existing.sh.
+#
+# CO Y KHONG cap secretmanager.secretAccessor o cap project: quyen do da
+# duoc cap dung tren mot secret trong module database. Cap o ca hai cho
+# khien viec ra soat "ai doc duoc bi mat nao" tra ve cau tra loi sai.
+
+locals {
+  runtime_accounts = {
+    api = {
+      display = "Dataops API (Cloud Run)"
+      roles   = ["roles/bigquery.dataViewer", "roles/bigquery.jobUser", "roles/cloudsql.client"]
+    }
+    jobs = {
+      display = "Dataops Jobs (Sync, QC, Export)"
+      roles   = ["roles/bigquery.dataViewer", "roles/bigquery.jobUser", "roles/cloudsql.client"]
+    }
+    # Web khong doc du lieu: no chi goi API bang OIDC token, va quyen do
+    # la binding tren service API chu khong phai vai tro cap project.
+    web = {
+      display = "Dataops Web (Cloud Run)"
+      roles   = []
+    }
+  }
+
+  runtime_bindings = merge([
+    for key, acc in local.runtime_accounts : {
+      for role in acc.roles : "${key}:${role}" => { key = key, role = role }
+    }
+  ]...)
+}
+
+resource "google_service_account" "runtime" {
+  for_each     = local.runtime_accounts
+  project      = var.project_id
+  account_id   = "dataops-${each.key}"
+  display_name = each.value.display
+}
+
+resource "google_project_iam_member" "runtime" {
+  for_each = local.runtime_bindings
+  project  = var.project_id
+  role     = each.value.role
+  member   = "serviceAccount:${google_service_account.runtime[each.value.key].email}"
+}

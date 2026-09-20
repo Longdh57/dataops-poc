@@ -20,8 +20,54 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost
 RULES_PATH = Path(os.getenv("RULES_PATH", "/srv/rules/rules.yaml"))
 
 
+SEVERITIES = {"critical", "warning", "info"}
+
+
 def log(msg: str) -> None:
     print(f"[qc] {msg}", flush=True)
+
+
+def validate(rules: list[dict]) -> list[str]:
+    """Bat loi cau hinh TRUOC khi chay, va bat het mot luot.
+
+    File luat la thu duoc sua thuong xuyen nhat trong ca he thong, boi
+    nguoi khong doc code. Mot luat thieu severity ma chi bao loi luc chay
+    SQL thi nguoi sua phai doan; bao ro tu day thi khong.
+    """
+    loi: list[str] = []
+    seen: set[str] = set()
+    for i, r in enumerate(rules):
+        ten = r.get("id") or f"luat thu {i + 1}"
+        if not r.get("id"):
+            loi.append(f"{ten}: thieu 'id'")
+        elif r["id"] in seen:
+            loi.append(f"{ten}: trung 'id' voi luat khac")
+        else:
+            seen.add(r["id"])
+        if r.get("severity") not in SEVERITIES:
+            loi.append(f"{ten}: 'severity' phai la mot trong {sorted(SEVERITIES)}, "
+                       f"dang la {r.get('severity')!r}")
+        if not r.get("message"):
+            loi.append(f"{ten}: thieu 'message' — day la cau nguoi dung doc")
+        if not r.get("sql"):
+            loi.append(f"{ten}: thieu 'sql'")
+        scope = r.get("scope")
+        if scope is not None and (not isinstance(scope, list) or not scope):
+            loi.append(f"{ten}: 'scope' phai la danh sach bang, hoac bo han di")
+    return loi
+
+
+def scope_filter(rule: dict) -> tuple[str, list]:
+    """Pham vi cua luat: chi ap cho mot so bang.
+
+    Co luat chi dung o vai thi truong — nguong kiem duyet cua moi noi mot
+    khac. Khai bao bang cau hinh thay vi nhet dieu kien vao SQL de nguoi
+    doc thay ngay luat nay cham vao dau.
+    """
+    scope = rule.get("scope")
+    if not scope:
+        return "", []
+    return "WHERE x.state = ANY(%s)", [[s.upper() for s in scope]]
 
 
 def main() -> int:
@@ -31,6 +77,12 @@ def main() -> int:
 
     config = yaml.safe_load(RULES_PATH.read_text())
     rules = config["rules"]
+
+    if loi := validate(rules):
+        log(f"file luat co {len(loi)} loi — KHONG chay luat nao:")
+        for m in loi:
+            log(f"  - {m}")
+        return 1
     log(f"nap {len(rules)} luat tu {RULES_PATH}")
 
     with psycopg.connect(DATABASE_URL) as conn:
@@ -60,17 +112,20 @@ def main() -> int:
             log(f"xoa {cur.rowcount:,} ngoai le open cu")
 
             for rule in rules:
+                where, scope_params = scope_filter(rule)
                 cur.execute(
                     f"""
                     INSERT INTO qc_exception
                         (run_id, rule_id, severity, year, state, gender, name, message, observed, status)
                     SELECT %s, %s, %s, x.year, x.state, x.gender, x.name, %s, x.observed, 'open'
                     FROM ({rule['sql']}) x
+                    {where}
                     """,
-                    (run_id, rule["id"], rule["severity"], rule["message"]),
+                    (run_id, rule["id"], rule["severity"], rule["message"], *scope_params),
                 )
                 totals[rule["id"]] = cur.rowcount
-                log(f"  {rule['id']:26} {rule['severity']:9} {cur.rowcount:>6,}")
+                pham_vi = f" [{','.join(rule['scope'])}]" if rule.get("scope") else ""
+                log(f"  {rule['id']:26} {rule['severity']:9} {cur.rowcount:>6,}{pham_vi}")
         conn.commit()
 
         with conn.cursor() as cur:

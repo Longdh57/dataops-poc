@@ -102,7 +102,14 @@ export default function VersionsPage() {
               {q.data.rows.map((v) => (
                 <tr key={v.id}>
                   <td style={{ color: "var(--ink)", fontWeight: 600 }}>{v.label}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>{v.run_id}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {v.run_id}
+                    <div className="tone-muted" style={{ fontSize: 11 }}>
+                      {v.source_run_ids?.length
+                        ? `${v.source_run_ids.length} lần nạp dữ liệu`
+                        : "không ghi lại lần nạp — không xuất file được"}
+                    </div>
+                  </td>
                   <td className="num">{num(v.row_count)}</td>
                   <td>{v.signed_by}</td>
                   <td className="mono" style={{ fontSize: 11.5 }}>{dt(v.signed_at)}</td>

@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     region: str = "asia-southeast1"
     # Cloud Run Job ma nut "Nap lai tu nguon" kich hoat
     sync_job_name: str = "dataops-sync"
+    # Cloud Run Job sinh file deliverable
+    export_job_name: str = "dataops-export"
 
     # Bat buoc verify IAP JWT. Chi dat false khi chay local hoac khi
     # IAP chua bat duoc — luc do danh tinh lay tu header X-Dev-User.

@@ -47,7 +47,7 @@ resource "google_sql_database_instance" "main" {
     }
 
     maintenance_window {
-      day          = 7 # chu nhat
+      day          = 7  # chu nhat
       hour         = 19 # 02:00 gio VN
       update_track = "stable"
     }

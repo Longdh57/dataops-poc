@@ -9,9 +9,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { gw, post } from "@/app/lib/api";
-import { dt } from "@/app/lib/format";
+import { dt, num } from "@/app/lib/format";
 import { useGate } from "@/app/lib/queries";
-import type { ExportJob } from "@/app/lib/types";
+import type { ExportCreated, ExportJob } from "@/app/lib/types";
 import { ErrBox, Loading, Status } from "@/app/ui/bits";
 
 export default function RequestsPage() {
@@ -29,7 +29,7 @@ export default function RequestsPage() {
   });
 
   const ask = useMutation({
-    mutationFn: () => post<{ job_id: number }>("/exports", { format }),
+    mutationFn: () => post<ExportCreated>("/exports", { format }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["exports"] }),
   });
 
@@ -41,7 +41,9 @@ export default function RequestsPage() {
         <div>
           <h1>Yêu cầu dữ liệu</h1>
           <p className="sub">
-            File gửi khách xuất thẳng từ BigQuery — nguồn sự thật — rồi áp các ô đã sửa tay lên trên.
+            File gửi khách xuất thẳng từ BigQuery — nguồn sự thật — nhưng chỉ lấy những lần nạp
+            nằm trong bản đã ký, và chỉ những bang trong phạm vi của bạn. Các ô sửa tay được áp
+            lên trên, thị phần tính lại cho nhóm bị sửa.
           </p>
         </div>
       </div>
@@ -75,6 +77,22 @@ export default function RequestsPage() {
         </div>
         <div style={{ marginTop: 9 }}>
           <ErrBox error={ask.error} />
+          {ask.data ? (
+            <div className={`banner ${ask.data.triggered ? "banner-good" : "banner-warn"}`}>
+              <div>
+                <div className="banner-title">
+                  {ask.data.triggered
+                    ? `Đã nhận yêu cầu #${ask.data.job_id} và kích hoạt Export Job`
+                    : `Đã xếp hàng yêu cầu #${ask.data.job_id}`}
+                </div>
+                <div className="banner-body">
+                  Xuất từ bản ký <b>{ask.data.signed_version.label}</b>
+                  {ask.data.scope ? ` · phạm vi ${ask.data.scope.join(", ")}` : " · toàn bộ phạm vi"}
+                  {ask.data.triggered ? "" : ` — ${ask.data.note}`}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -87,10 +105,12 @@ export default function RequestsPage() {
               <tr>
                 <th>#</th>
                 <th>Trạng thái</th>
-                <th>Lần nạp</th>
+                <th>Bản ký</th>
+                <th>Định dạng</th>
+                <th>Phạm vi</th>
+                <th className="num">Số dòng</th>
                 <th>Người yêu cầu</th>
                 <th>Lúc gửi</th>
-                <th>Xong lúc</th>
                 <th />
               </tr>
             </thead>
@@ -98,11 +118,25 @@ export default function RequestsPage() {
               {q.data.rows.map((j) => (
                 <tr key={j.id}>
                   <td className="mono">{j.id}</td>
-                  <td><Status value={j.status} /></td>
-                  <td className="mono" style={{ fontSize: 12 }}>{j.run_id}</td>
+                  <td>
+                    <Status value={j.status} />
+                    {j.warning ? (
+                      <div className="tone-warn" style={{ fontSize: 11.5, marginTop: 4, maxWidth: 260 }}>
+                        {j.warning}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td>
+                    {j.signed_label ?? <span className="tone-muted">—</span>}
+                    <div className="mono tone-muted" style={{ fontSize: 11 }}>{j.run_id}</div>
+                  </td>
+                  <td><span className="pill">{j.format}</span></td>
+                  <td className="mono" style={{ fontSize: 11.5 }}>
+                    {j.scope_states?.length ? j.scope_states.join(", ") : "tất cả"}
+                  </td>
+                  <td className="num">{j.row_count ? num(j.row_count) : "—"}</td>
                   <td>{j.requested_by}</td>
                   <td className="mono" style={{ fontSize: 11.5 }}>{dt(j.created_at)}</td>
-                  <td className="mono" style={{ fontSize: 11.5 }}>{dt(j.finished_at)}</td>
                   <td><Download job={j} locked={locked} /></td>
                 </tr>
               ))}

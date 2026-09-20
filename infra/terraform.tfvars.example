@@ -1,9 +1,13 @@
-project_id          = "dataops-poc-2026"
-region              = "asia-southeast1"
-env                 = "poc"
-api_service_account = "dataops-api@dataops-poc-2026.iam.gserviceaccount.com"
-web_service_account = "dataops-web@dataops-poc-2026.iam.gserviceaccount.com"
-jobs_service_account = "dataops-jobs@dataops-poc-2026.iam.gserviceaccount.com"
+project_id = "dataops-poc-2026"
+region     = "asia-southeast1"
+env        = "poc"
+
+# Service account cho tung thanh phan. DE TRONG o project moi — Terraform
+# tu tao va tu quan ly. Chi dien khi du an da co san tai khoan tao tay, va
+# nho chay ./scripts/import-existing.sh mot lan truoc khi apply.
+api_service_account  = ""
+web_service_account  = ""
+jobs_service_account = ""
 
 # Bat CI/CD: dien 'owner/repo' cua GitHub
 github_repo = ""
@@ -15,7 +19,13 @@ iap_members = [
 ]
 
 # NO KY THUAT: mo web cho allUsers khi chua bat duoc IAP.
-# PHAI dat false truoc P2.
 public_access = false
 
 alert_email = "longbloginfo@gmail.com"
+
+# Ten mien that cua giao dien — uptime check se go vao day.
+# De trong thi uptime check go vao URL run.app.
+web_domain = ""
+
+# Tai khoan duoc seed voi vai tro admin khi chay dataops-seed.
+owner_email = ""

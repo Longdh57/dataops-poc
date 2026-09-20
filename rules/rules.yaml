@@ -1,11 +1,18 @@
 # Bo luat QC khai bao bang cau hinh — them luat moi chi can them mot muc
-# o day, khong sua code (dung nhu P5 yeu cau).
+# o day, khong sua code.
 #
-# Moi luat la mot cau SELECT tra ve khoa tu nhien (year, state, gender,
-# name) va cot `observed` dang jsonb de nguoi dung thay so lieu goc.
+# Moi luat co nam phan:
+#   id       — dinh danh, hien tren giao dien va trong bang qc_exception
+#   severity — critical | warning | info. CHI critical moi khoa cong phat hanh
+#   scope    — (tuy chon) danh sach bang luat nay ap dung. Bo di = moi bang
+#   message  — cau nguoi dung doc khi gap ngoai le nay
+#   sql      — SELECT tra ve khoa tu nhien (year, state, gender, name) va
+#              cot `observed` dang jsonb de nguoi dung thay so lieu goc
+#
 # Nguong duoc dat tu profile du lieu that, khong phai doan.
 #
-# CHI severity=critical moi khoa cong phat hanh.
+# Job se tu choi chay neu file nay sai cau truc — sai o dau bao o day,
+# khong de den luc SQL no ra loi kho hieu.
 
 version: 2
 
@@ -28,6 +35,8 @@ rules:
   - id: duoi_nguong_kiem_duyet
     severity: critical
     message: "So tre duoi 5 — nguon SSA khong cong bo muc nay, du lieu dang ngo"
+    # Vi du ve pham vi: bo dong `scope` di thi luat ap cho moi bang.
+    # scope: [CA, TX]
     sql: |
       SELECT year, state, gender, name,
              jsonb_build_object('number', number) AS observed

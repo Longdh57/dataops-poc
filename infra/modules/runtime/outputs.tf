@@ -28,3 +28,11 @@ output "migrate_job" {
 output "qc_job" {
   value = google_cloud_run_v2_job.qc.name
 }
+
+output "export_job" {
+  value = google_cloud_run_v2_job.export.name
+}
+
+output "seed_job" {
+  value = google_cloud_run_v2_job.seed.name
+}

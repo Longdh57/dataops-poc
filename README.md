@@ -11,7 +11,9 @@ ban thiet ke day du.
 | `apps/web` | Next.js 16 + TypeScript — giao dien, AG Grid + TanStack Query |
 | `apps/api` | FastAPI — phuc vu du lieu, phan quyen |
 | `jobs/sync` | BigQuery -> Cloud SQL, chay moi 60s (P2) |
-| `jobs/export` | Sinh Excel/CSV qua GCS + signed URL (P6) |
+| `jobs/export` | Sinh Excel/CSV tu ban da ky, qua GCS + signed URL |
+| `jobs/seed` | Nguoi dung thu nghiem + bang fact demo tren BigQuery |
+| `docs` | Runbook van hanh, kich ban demo |
 | `infra` | Terraform, state tren GCS |
 | `rules` | Bo luat QC khai bao bang YAML |
 
@@ -362,6 +364,130 @@ Buoc cuoi (file tai ve duoc) can Export Job chay that — do la P5.
 - Export Job chua dung lich chay, nen job dung o `pending`. Giao dien da
   xu ly du bon trang thai `pending / running / done / error`.
 
+## Hoan thien & ban giao (P5)
+
+### File gui khach xuat tu dau
+
+Cau hoi nghe don gian nhung la cho de sai nhat. Truoc P5, Export Job query
+`WHERE run_id IS NOT NULL` — tuc la lay TAT CA lan nap co trong BigQuery.
+Do chung tren du lieu that:
+
+| | So dong |
+|---|---|
+| File xuat ra | 1.318.023 |
+| Ban da ky | 1.222.947 |
+| Thua | **95.076** |
+
+95 nghin dong do chua qua rule engine, chua qua cong phat hanh, khong nam
+trong ban Team Lead da ky.
+
+Goc re: `run_id` la HAI thu khac nhau.
+
+| Cot | Vi du | Ai dat |
+|---|---|---|
+| `sync_state.last_run_id`, `signed_version.run_id` | `run-20260920T070541` | Sync Job, moi luot dong bo |
+| `fact_names.run_id` tren BigQuery | `run-2026-09-20-001` | team Data, moi lan nap du lieu |
+
+Loc BigQuery bang nhan cua Sync Job thi tra ve 0 dong — nen code cu danh
+lay tat. P5 noi hai khong gian nay lai:
+
+1. Sync Job ghi `sync_state.source_run_ids` — nhung lan nap dang co trong
+   ban sao. Doc tu Postgres sau khi swap nen ton 0 dong chi phi query.
+2. Ky phat hanh dong bang danh sach do vao `signed_version.source_run_ids`.
+3. Export Job loc `WHERE run_id IN UNNEST(@runs)`.
+
+Ban ky tu truoc P5 khong co danh sach nay se bi Export Job tu choi, kem
+thong bao noi ro phai ky lai — thay vi lang le xuat sai.
+
+### Ba rang buoc con lai cua Export Job
+
+- **Pham vi**: sale pham vi CA+TX xin file thi nhan dung 170.682 dong cua
+  CA va TX. Pham vi duoc chot luc XIN FILE, khong phai luc job chay — doi
+  pham vi cua ho hom sau khong lam doi file da phat.
+- **Thi phan tinh lai**: sua mot o thi thi phan ca nhom doi. Khong tinh lai
+  thi khach cong cot do se khong ra 100%. Chi tinh lai cho nhom co override;
+  nhom khong ai dong toi giu nguyen so cua nguon.
+- **Gioi han Excel**: 1.048.576 dong mot sheet. Vuot thi tach sheet va ghi
+  canh bao vao `export_job.warning`, KHONG lang le cat bot dong.
+
+### Kich hoat job
+
+`POST /api/exports` goi thang Cloud Run Job kem `EXPORT_JOB_ID`, khong dung
+Scheduler poll. Poll moi 1-2 phut se bat nguoi dung cho vo co du hang doi
+rong.
+
+Goi that bai — chay local, job chua deploy, thieu quyen — thi yeu cau VAN
+nam trong hang doi va API noi ro ly do. Trang thai te nhat la da ghi vao
+database ma nguoi dung tuong la chua.
+
+### Bo luat: them `scope` va kiem tra cau hinh
+
+Luat gio co nam phan: `id`, `severity`, `scope` (tuy chon), `message`, `sql`.
+Job tu choi chay neu file sai cau truc va bao **het loi mot luot** — file
+nay bi sua boi nguoi khong doc code, bao tung loi mot thi ho phai doan.
+
+### Giam sat
+
+| Canh bao | Bat cai gi |
+|---|---|
+| Sync Job im lang qua 30 phut | Ban sao cu dan ma khong ai biet |
+| Cloud Run Job that bai | Job co chay, co bao loi, nhung khong ai doc log |
+| Web khong phan hoi | Uptime check tu ba chau luc |
+
+Dashboard `Dataops — do tre dong bo va suc khoe job`: khoang trong tren
+bieu do "lan sync thanh cong" chinh la do tre dong bo.
+
+### Terraform hoa toan bo
+
+| Truoc P5 | Sau P5 |
+|---|---|
+| 3 service account tao bang gcloud | `module.iam` quan ly, co import script |
+| Dataset BigQuery tao tay | `module.data` |
+| Khong co Export Job, Seed Job | Ca hai trong `module.runtime` |
+| `secretAccessor` cap o ca project lan secret | Terraform chi cap o cap secret |
+
+Du an dang chay phai import mot lan truoc khi apply:
+
+```bash
+./scripts/import-existing.sh dataops-poc-2026
+cd infra && terraform apply
+```
+
+Import khong dong toi tai nguyen that — no chi ghi vao state rang tai
+nguyen do tu nay thuoc ve Terraform.
+
+### CI/CD: hai buoc bi thieu
+
+Pipeline cu build API va Web, roi deploy. Thieu hai thu khien deploy xong
+la hong:
+
+- **Migration khong chay.** Code moi gap schema cu la 500 ngay tren man
+  hinh nguoi dung. Gio `deploy-staging` cap nhat image cho job
+  `dataops-migrate` roi chay `alembic upgrade head` va **doi xong** truoc
+  khi deploy API. Thu tu nay an toan vi migration chi them cot — code cu
+  van chay duoc voi schema moi.
+- **Image cua job khong duoc cap nhat.** Sync, QC, Export, Seed khong phai
+  service nen khong co "deploy". Thieu buoc `gcloud run jobs update` thi
+  chung chay code cu mai ma khong ai thay gi bat thuong. Image `jobs` gio
+  cung duoc build trong CI.
+
+### Tai lieu
+
+- [docs/runbook.md](docs/runbook.md) — lam moi khac nap lai ra sao, sync
+  loi thi lam gi, quay lai phien ban truoc, them nguoi dung, dung lai tu
+  project trong
+- [docs/demo.md](docs/demo.md) — kich ban trinh bay 5 phut
+
+### Test
+
+```bash
+cd apps/api && pytest tests -q   # 28 test: phan quyen, khoa lac quan, cong, export
+pytest jobs/tests -q             # 12 test: logic export va bo luat, khong can BigQuery
+```
+
+`jobs/tests` chay duoc ma khong can cloud: phan de sai nhat cua Export Job
+la ap override, tinh lai thi phan va cat sheet — ca ba deu la ham thuan.
+
 ## Terraform
 
 ```bash
@@ -378,7 +504,7 @@ Bien quan trong trong `terraform.tfvars`:
 
 ## Con no ky thuat
 
-### ⚠️ PHAI DONG TRUOC P2 — web dang mo public
+### ⚠️ VAN CHUA DONG — web dang mo public
 
 `infra/terraform.tfvars` dang dat `public_access = true`. Bat cu ai co link
 deu xem duoc https://dataops-dev.3ddesigns.xyz — KHONG can dang nhap.
@@ -387,8 +513,9 @@ Ly do: IAP chua bat duoc (project khong thuoc Organization), ma khong co
 IAP thi trinh duyet khong co cach nao dang nhap, moi request deu 403.
 Mo tam de xem va demo.
 
-Chap nhan duoc BAY GIO vi trang chi co ba dong trang thai, khong co du
-lieu. P2 la luc du lieu that tu BigQuery do vao Postgres — truoc do PHAI:
+Ly do mo tam da het hieu luc tu P2: trang khong con la ba dong trang thai
+nua ma la 1,2 trieu dong du lieu that, kem danh tinh gia lap qua
+`X-Dev-User`. Day la mon no nang nhat con lai cua ca du an.
 
 ```bash
 # trong infra/terraform.tfvars: public_access = false
@@ -409,11 +536,11 @@ co Organization -> IAP tu cap OAuth client -> bo duoc `public_access` han.
 
 ### Cac mon khac
 
-- `dataops-api`, `dataops-jobs`, `dataops-web` service account dang tao
-  bang gcloud, chua nam trong Terraform. P5 ("Terraform hoa toan bo") phai
-  `terraform import` chung vao.
-- Quyen `secretmanager.secretAccessor` cua `dataops-api` dang co o CA HAI
-  noi: cap project (tu P0) va cap secret (P1). Nen go cai cap project.
+- ~~Service account tao bang gcloud~~ — P5 da khai bao trong `module.iam`.
+  Con lai mot lan `./scripts/import-existing.sh` truoc khi apply.
+- `secretmanager.secretAccessor` van con o CA HAI noi: cap project (tu P0)
+  va cap secret (P1). Terraform chi cap o cap secret; go cai cap project
+  la lenh `gcloud` co trong runbook, muc "Go quyen thua".
 - Pipeline: job `deploy-staging` va `deploy-prod` deploy vao CUNG service,
   cung domain. `gcloud run deploy` cho revision moi 100% traffic ngay, nen
   buoc duyet tay o `deploy-prod` khong con y nghia — code da live tu truoc.

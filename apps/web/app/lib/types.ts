@@ -20,6 +20,8 @@ export type VersionInfo = {
 export type SignedVersion = {
   id: number;
   run_id: string;
+  /** Cac lan nap du lieu duoc dong bang trong ban ky nay. */
+  source_run_ids?: string[] | null;
   label: string;
   row_count: number;
   signed_by: string;
@@ -151,11 +153,29 @@ export type ExportJob = {
   id: number;
   run_id: string;
   status: "pending" | "running" | "done" | "error" | string;
+  format: string;
+  scope_states: string[] | null;
+  row_count: number | null;
+  /** Canh bao khong lam job that bai — vi du vuot gioi han dong cua Excel. */
+  warning: string | null;
+  signed_version_id: number | null;
+  signed_label: string | null;
   requested_by: string;
   created_at: string;
   finished_at: string | null;
   gcs_path: string | null;
   error: string | null;
+};
+
+export type ExportCreated = {
+  job_id: number;
+  status: string;
+  signed_version: { id: number; label: string };
+  format: string;
+  scope: string[] | null;
+  /** false = job chua duoc kich hoat tu dong, yeu cau nam trong hang doi. */
+  triggered: boolean;
+  note: string;
 };
 
 export type Options = {

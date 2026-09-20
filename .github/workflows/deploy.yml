@@ -46,6 +46,12 @@ jobs:
           docker build --target runner -t "$REGISTRY/web:${{ steps.meta.outputs.tag }}" apps/web
           docker push "$REGISTRY/web:${{ steps.meta.outputs.tag }}"
 
+      # Build tu GOC repo: image nay can ca thu muc rules/.
+      - name: Build va push Jobs
+        run: |
+          docker build -f jobs/Dockerfile -t "$REGISTRY/jobs:${{ steps.meta.outputs.tag }}" .
+          docker push "$REGISTRY/jobs:${{ steps.meta.outputs.tag }}"
+
   deploy-staging:
     needs: build
     runs-on: ubuntu-latest
@@ -58,6 +64,20 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v3
 
+      # Migration chay TRUOC khi code moi len song. Cac migration deu chi
+      # them cot nen code cu van chay duoc voi schema moi — nguoc lai thi
+      # khong: code moi gap schema cu la 500 ngay tren man hinh nguoi dung.
+      #
+      # Job migrate dung image cua API (alembic nam trong do) va Terraform
+      # co ignore_changes tren image, nen phai cap nhat o day.
+      - name: Chay migration
+        run: |
+          gcloud run jobs update dataops-migrate \
+            --image "$REGISTRY/api:${{ needs.build.outputs.tag }}" \
+            --region "$REGION" --project "$PROJECT_ID" --quiet
+          gcloud run jobs execute dataops-migrate \
+            --region "$REGION" --project "$PROJECT_ID" --wait
+
       - name: Deploy API
         run: |
           gcloud run deploy dataops-api \
@@ -69,6 +89,18 @@ jobs:
           gcloud run deploy dataops-web \
             --image "$REGISTRY/web:${{ needs.build.outputs.tag }}" \
             --region "$REGION" --project "$PROJECT_ID" --quiet
+
+      # Sync, QC, Export, Seed khong phai service nen khong co "deploy" —
+      # phai cap nhat image cho tung job. Thieu buoc nay thi job chay code
+      # cu mai mai ma khong ai thay gi bat thuong.
+      - name: Cap nhat image cho cac job nen
+        run: |
+          for job in dataops-sync dataops-qc dataops-export dataops-seed; do
+            gcloud run jobs update "$job" \
+              --image "$REGISTRY/jobs:${{ needs.build.outputs.tag }}" \
+              --region "$REGION" --project "$PROJECT_ID" --quiet \
+              || echo "bo qua $job — chua ton tai, chay terraform apply truoc"
+          done
 
       - name: Smoke test
         run: |

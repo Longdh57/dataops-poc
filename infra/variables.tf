@@ -16,8 +16,9 @@ variable "env" {
 }
 
 variable "api_service_account" {
-  description = "Service account ma Cloud Run API chay duoi"
+  description = "Service account ma Cloud Run API chay duoi. De trong thi Terraform tu tao va tu quan ly."
   type        = string
+  default     = ""
 }
 
 variable "api_image" {
@@ -51,8 +52,9 @@ variable "iap_enabled" {
 }
 
 variable "web_service_account" {
-  description = "Service account ma Cloud Run Web chay duoi"
+  description = "Service account ma Cloud Run Web chay duoi. De trong thi Terraform tu tao va tu quan ly."
   type        = string
+  default     = ""
 }
 
 variable "public_access" {
@@ -62,8 +64,9 @@ variable "public_access" {
 }
 
 variable "jobs_service_account" {
-  description = "Service account cua Sync Job va Export Job"
+  description = "Service account cua Sync Job va Export Job. De trong thi Terraform tu tao va tu quan ly."
   type        = string
+  default     = ""
 }
 
 variable "jobs_image" {
@@ -80,6 +83,18 @@ variable "bq_dataset" {
 
 variable "alert_email" {
   description = "Email nhan canh bao dong bo tre"
+  type        = string
+  default     = ""
+}
+
+variable "web_domain" {
+  description = "Ten mien that cua giao dien (vi du dataops-dev.3ddesigns.xyz). De trong thi uptime check go vao URL run.app."
+  type        = string
+  default     = ""
+}
+
+variable "owner_email" {
+  description = "Tai khoan admin duoc seed vao app_user khi dung moi truong"
   type        = string
   default     = ""
 }

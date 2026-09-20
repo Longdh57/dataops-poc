@@ -64,3 +64,8 @@ variable "bq_dataset" {
   type    = string
   default = "dataops_src"
 }
+variable "owner_email" {
+  description = "Tai khoan duoc seed voi vai tro admin"
+  type        = string
+  default     = ""
+}
