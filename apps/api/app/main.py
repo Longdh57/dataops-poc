@@ -1,6 +1,19 @@
-"""Data Operations API — P3: phan quyen, override, cong phat hanh."""
+"""Data Operations API.
+
+Quy trinh nam o docs/quy-trinh-chat-luong.md. Ba dieu rang buoc ca file
+nay, doc truoc khi sua:
+
+1. API nay KHONG sua so. Khong endpoint nao ghi vao fact_current. So sai
+   thi mo ticket de team Data sua o nguon.
+2. Vi pham QC la nghi ngo cua may — no khong tu khoa cong phat hanh.
+   Nguoi chiu trach nhiem duyet bang phieu duyet, va ten ho nam trong
+   ban ky.
+3. Cai khoa cung chi con hai: ticket dang chan, va QC chua kiem lan nap
+   hien tai. Ca hai deu khong phai chuyen y kien.
+"""
 
 import base64
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -179,7 +192,6 @@ def facts(
         raise HTTPException(400, f"khong sap xep duoc theo '{sort}'; cho phep: {sorted(SORTABLE)}")
 
     # Pham vi ep tu database theo email — KHONG lay tu tham so client.
-    # alias "f" bat buoc vi cau truy van JOIN sang fact_override.
     scope_sql, scope_params = scope_clause(p, state, alias="f")
     where, params = ([scope_sql], list(scope_params)) if scope_sql else ([], [])
 
@@ -201,15 +213,19 @@ def facts(
     clause = f"WHERE {' AND '.join(w for w in where if w)}" if where else ""
     direction = "DESC" if desc else "ASC"
 
+    # So doc ra la so cua nguon, khong hon khong kem: ung dung nay khong
+    # sua so. O nao dang co ticket thi duoc danh dau de nguoi doc biet no
+    # dang cho team Data sua, chu KHONG thay so.
     sql = f"""
         SELECT f.year, f.state, f.gender, f.name, f.run_id,
-               f.number AS number_raw, f.market_share, f.prev_number, f.prev_year,
-               o.new_value, o.reason AS override_reason,
-               o.created_by AS override_by, COALESCE(o.version, 0) AS override_version
+               f.number, f.market_share, f.prev_number, f.prev_year,
+               t.id AS ticket_id, t.status AS ticket_status,
+               t.expected_value AS ticket_expected, t.blocking AS ticket_blocking
         FROM fact_current f
-        LEFT JOIN fact_override o
-          ON o.year = f.year AND o.state = f.state
-         AND o.gender = f.gender AND o.name = f.name AND o.field = 'number'
+        LEFT JOIN ticket t
+          ON t.year = f.year AND t.state = f.state
+         AND t.gender = f.gender AND t.name = f.name AND t.field = 'number'
+         AND t.status IN ('open', 'awaiting_verify')
         {clause}
         ORDER BY f.{sort} {direction}, f.year {direction}, f.state {direction},
                  f.gender {direction}, f.name {direction}
@@ -222,213 +238,465 @@ def facts(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    for r in rows:
-        # So hien thi = so da sua neu co override, khong thi lay so goc.
-        r["number"] = int(r.pop("new_value")) if r["new_value"] is not None else r["number_raw"]
-        r["overridden"] = r["number"] != r["number_raw"]
-
     return {"rows": rows, "limit": limit, "has_more": has_more,
             "next_cursor": encode_cursor(rows[-1], sort) if rows and has_more else None,
             "scope": "tat ca" if p.unrestricted else sorted(p.scope_states)}
 
 
-# -------------------------------------------------------------- exceptions
+# ------------------------------------------------------ van tay & vi pham
+
+def qc_state(cur) -> dict:
+    """Lan nap hien tai + lan QC gan nhat + version bo luat.
+
+    Ba thu nay phai doc cung mot luc: ky mot lan nap MA QC chua kiem thi
+    danh sach vi pham tren man hinh la cua lan nap truoc, va phieu duyet
+    se noi ve mot thu khong con ton tai.
+    """
+    cur.execute("""SELECT last_run_id, last_row_count, source_run_ids,
+                          qc_run_id, qc_checked_at, rules_version
+                   FROM sync_state WHERE id = 1""")
+    return cur.fetchone() or {}
+
+
+def violations_of(cur, run_id: str) -> dict:
+    """Bo vi pham cua MOT lan nap: dem theo luat, theo muc, va van tay.
+
+    Van tay dung tong hash thay vi noi chuoi: tong khong phu thuoc thu tu
+    va khong giu gi trong bo nho, nen no khong phinh ra theo so vi pham.
+    Nho no ma phan biet duoc "van 3 o cu" voi "3 o khac" — hai thu nay
+    tren giao dien trong het suc giong nhau.
+    """
+    cur.execute(
+        """SELECT rule_id, severity, count(*) AS n FROM qc_exception
+           WHERE run_id = %s GROUP BY rule_id, severity ORDER BY n DESC""", (run_id,))
+    by_rule = cur.fetchall()
+    cur.execute(
+        """SELECT count(*) AS n,
+                  coalesce(sum((('x' || substr(md5(
+                      rule_id || '|' || coalesce(year::text,'') || '|' || coalesce(state,'') ||
+                      '|' || coalesce(gender,'') || '|' || coalesce(name,'')
+                  ), 1, 8))::bit(32)::int)::bigint), 0) AS h
+           FROM qc_exception WHERE run_id = %s""", (run_id,))
+    agg = cur.fetchone()
+    by_severity: dict[str, int] = {}
+    for r in by_rule:
+        by_severity[r["severity"]] = by_severity.get(r["severity"], 0) + r["n"]
+    return {
+        "run_id": run_id,
+        "total": agg["n"],
+        "by_rule": by_rule,
+        "by_severity": by_severity,
+        "fingerprint": hashlib.md5(f"{agg['n']}:{agg['h']}".encode()).hexdigest(),
+    }
+
+
+def data_checksum(cur, source_run_ids: list[str] | None) -> str | None:
+    """Van tay DU LIEU cua ban sap ky.
+
+    Muc dich hep va ro: phat hien nguon bi sua TAI CHO duoi cung mot
+    run_id. Khong phai chu ky chong gia mao — no chi can bat duoc thay
+    doi, va phai chay duoc tren db-f1-micro voi 1,2 trieu dong, nen dung
+    tong hash O(1) bo nho thay vi noi ca bang thanh mot chuoi.
+    """
+    if not source_run_ids:
+        return None
+    cur.execute(
+        """SELECT count(*) AS n, coalesce(sum(number), 0) AS total,
+                  coalesce(sum((('x' || substr(md5(
+                      year::text || '|' || state || '|' || gender || '|' || name ||
+                      '|' || number::text
+                  ), 1, 8))::bit(32)::int)::bigint), 0) AS h
+           FROM fact_current WHERE run_id = ANY(%s)""", (list(source_run_ids),))
+    r = cur.fetchone()
+    return hashlib.md5(f"{r['n']}:{r['total']}:{r['h']}".encode()).hexdigest()
+
+
+def require_gate_open(cur) -> None:
+    """Chan phat hanh. Dung mot cho, dung cho ca luc xin file lan luc tai.
+
+    Cong co the khoa lai GIUA hai thao tac do — ai do vua mo mot ticket
+    chan — nen kiem o ca hai dau, khong phai thua.
+    """
+    blockers = open_tickets(cur, only_blocking=True)
+    if blockers:
+        raise HTTPException(409, {
+            "loi": "con ticket dang chan phat hanh",
+            "so_ticket": len(blockers),
+            "ticket": [{"id": t["id"], "title": t["title"]} for t in blockers[:20]],
+        })
+
+
+def open_tickets(cur, only_blocking: bool = False) -> list[dict]:
+    """Ticket chua dong — TOAN CUC, khong loc theo pham vi.
+
+    Co chu y: ticket chan ky la chuyen cua ca bo du lieu. Analyst Texas
+    phai thay dung thu dang chan phat hanh ngay ca khi no nam o bang khac,
+    y het cach cong phat hanh van luon toan cuc.
+    """
+    extra = " AND blocking" if only_blocking else ""
+    cur.execute(
+        f"""SELECT id, year, state, gender, name, field, title, expected_value,
+                   observed_at_open, last_observed, blocking, status, created_by,
+                   created_at, marked_fixed_by, marked_fixed_at,
+                   last_checked_run_id, last_checked_at, from_rule_id, evidence
+            FROM ticket
+            WHERE status IN ('open', 'awaiting_verify'){extra}
+            ORDER BY blocking DESC, id""")
+    return cur.fetchall()
+
+
+# -------------------------------------------------------------- vi pham QC
 
 @app.get("/api/exceptions")
 def exceptions(
     p: Me,
-    status: str = Query("open"),
     severity: str | None = None,
     state: str | None = None,
     year: int | None = None,
     gender: str | None = None,
     name: str | None = None,
+    run_id: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
-    scope_sql, scope_params = scope_clause(p, state)
-    where, params = ["status = %s"], [status]
-    if scope_sql:
-        where.append(scope_sql); params += list(scope_params)
-    if severity:
-        where.append("severity = %s"); params.append(severity)
-    # Cung bo loc voi thanh loc chung cua giao dien.
-    if year:
-        where.append("year = %s"); params.append(year)
-    if gender:
-        where.append("gender = %s"); params.append(gender.upper())
-    if name:
-        where.append("name ILIKE %s"); params.append(f"{name}%")
+    """Vi pham cua DUNG MOT lan nap — mac dinh la lan nap hien tai.
 
+    Khong con bo loc trang thai: vi pham khong co trang thai nua. QC quet
+    lai toan bo sau moi lan nap, nen danh sach nay luon la anh chup cua
+    du lieu dang co, chu khong phai hop thu tich luy qua nhieu lan nap.
+    """
+    scope_sql, scope_params = scope_clause(p, state)
     with db() as conn, conn.cursor() as cur:
+        st = qc_state(cur)
+        target = run_id or st.get("qc_run_id") or st.get("last_run_id")
+        if not target:
+            return {"total": 0, "rows": [], "run_id": None,
+                    "note": "chua co lan nap nao duoc kiem"}
+
+        where, params = ["run_id = %s"], [target]
+        if scope_sql:
+            where.append(scope_sql); params += list(scope_params)
+        if severity:
+            where.append("severity = %s"); params.append(severity)
+        if year:
+            where.append("year = %s"); params.append(year)
+        if gender:
+            where.append("gender = %s"); params.append(gender.upper())
+        if name:
+            where.append("name ILIKE %s"); params.append(f"{name}%")
+
         cur.execute(f"SELECT count(*) AS n FROM qc_exception WHERE {' AND '.join(where)}", params)
         total = cur.fetchone()["n"]
         cur.execute(
             f"""SELECT id, run_id, rule_id, severity, year, state, gender, name,
-                       message, observed, status, created_at
+                       message, observed, created_at
                 FROM qc_exception WHERE {' AND '.join(where)}
                 ORDER BY severity, id LIMIT %s""",
             [*params, limit])
         rows = cur.fetchall()
-    return {"total": total, "rows": rows}
+
+    return {"total": total, "rows": rows, "run_id": target,
+            "qc_stale": bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id")),
+            "rules_version": st.get("rules_version")}
 
 
-class ExceptionAction(BaseModel):
-    action: str = Field(description="apply | park | send_back")
-    new_value: int | None = None
-    reason: str = Field(min_length=3)
-    # Khoa lac quan: version cua override ma client dang nhin thay.
-    expected_version: int = 0
+# ----------------------------------------------------------------- ticket
+
+class TicketBody(BaseModel):
+    year: int
+    state: str
+    gender: str
+    name: str
+    title: str = Field(min_length=5, description="loi la gi, noi cho nguoi khac doc")
+    expected_value: int = Field(description="so DUNG — dieu kien nghiem thu QC doi chieu")
+    evidence: str | None = None
+    blocking: bool = True
+    from_rule_id: str | None = None
 
 
-@app.patch("/api/exceptions/{exc_id}")
-def resolve_exception(exc_id: int, body: ExceptionAction, p: Me) -> dict:
-    if body.action not in {"apply", "park", "send_back"}:
-        raise HTTPException(400, "action phai la apply | park | send_back")
-    if body.action == "apply" and body.new_value is None:
-        raise HTTPException(400, "apply thi phai co new_value")
+@app.post("/api/tickets", status_code=201)
+def create_ticket(body: TicketBody, p: Me) -> dict:
+    """Bao mot loi cho team Data sua o nguon.
+
+    Bat buoc co `expected_value` chu khong chi mo ta bang loi. Day la khac
+    biet duy nhat giua mot ticket dong duoc va mot loi hua: QC o lan nap
+    ke tiep doc so that len va doi chieu voi con so nay.
+    """
+    p.require("analyst", "team_lead", "admin")
+    key = (body.year, body.state.upper(), body.gender.upper(), body.name)
+
+    if not p.unrestricted and key[1] not in p.scope_states:
+        raise HTTPException(403, f"ban khong co pham vi tren bang {key[1]}")
 
     with db() as conn:
-        # Toan bo thao tac nam trong MOT transaction: ghi override, dong
-        # ngoai le va ghi audit cung song cung chet.
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM qc_exception WHERE id = %s FOR UPDATE", (exc_id,))
-            exc = cur.fetchone()
-            if not exc:
-                raise HTTPException(404, f"khong co ngoai le {exc_id}")
-            if exc["status"] != "open":
-                raise HTTPException(409, f"ngoai le nay da o trang thai '{exc['status']}'")
-
-            # Pham vi ap ca o day — khong duoc sua dong ngoai pham vi.
-            if not p.unrestricted and exc["state"] not in p.scope_states:
-                raise HTTPException(403, f"ban khong co pham vi tren bang {exc['state']}")
-
-            key = (exc["year"], exc["state"], exc["gender"], exc["name"])
-
-            if body.action == "apply":
-                cur.execute(
-                    """SELECT version, new_value FROM fact_override
-                       WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'
-                       FOR UPDATE""", key)
-                existing = cur.fetchone()
-                current_version = existing["version"] if existing else 0
-
-                # --- khoa lac quan ---
-                if current_version != body.expected_version:
-                    cur.execute(
-                        """SELECT number FROM fact_current
-                           WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
-                    base = cur.fetchone()
-                    raise HTTPException(409, {
-                        "loi": "co nguoi khac vua sua dong nay",
-                        "expected_version": body.expected_version,
-                        "current_version": current_version,
-                        "gia_tri_goc": base["number"] if base else None,
-                        "gia_tri_hien_tai": int(existing["new_value"]) if existing else None,
-                        "gia_tri_ban_muon_ghi": body.new_value,
-                    })
-
-                cur.execute(
-                    """SELECT number FROM fact_current
-                       WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
-                base = cur.fetchone()
-                if not base:
-                    raise HTTPException(404, "dong du lieu khong con ton tai")
-
-                cur.execute(
-                    """INSERT INTO fact_override
-                           (year, state, gender, name, field, old_value, new_value,
-                            reason, version, created_by)
-                       VALUES (%s,%s,%s,%s,'number',%s,%s,%s,%s,%s)
-                       ON CONFLICT (year, state, gender, name, field) DO UPDATE SET
-                           old_value = EXCLUDED.old_value,
-                           new_value = EXCLUDED.new_value,
-                           reason = EXCLUDED.reason,
-                           version = fact_override.version + 1,
-                           created_by = EXCLUDED.created_by,
-                           created_at = now()
-                       RETURNING version""",
-                    (*key, str(base["number"]), str(body.new_value),
-                     body.reason, current_version + 1, p.email))
-                new_version = cur.fetchone()["version"]
-
-                audit(cur, p.email, "override", "fact", "/".join(map(str, key)),
-                      {"number": base["number"]}, {"number": body.new_value, "ly_do": body.reason})
-                new_status = "applied"
-            else:
-                new_version = body.expected_version
-                audit(cur, p.email, body.action, "qc_exception", str(exc_id),
-                      {"status": "open"}, {"status": body.action, "ly_do": body.reason})
-                new_status = "parked" if body.action == "park" else "sent_back"
+            cur.execute(
+                """SELECT number FROM fact_current
+                   WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
+            fact = cur.fetchone()
+            if not fact:
+                raise HTTPException(404, "khong co dong nao ung voi khoa nay trong lan nap hien tai")
+            if int(fact["number"]) == body.expected_value:
+                raise HTTPException(
+                    400, f"so hien tai da la {body.expected_value} — khong co gi de sua")
 
             cur.execute(
-                """UPDATE qc_exception SET status=%s, resolved_at=now(), resolved_by=%s
-                   WHERE id=%s""", (new_status, p.email, exc_id))
+                """SELECT id, status FROM ticket
+                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'
+                     AND status IN ('open','awaiting_verify')""", key)
+            if dup := cur.fetchone():
+                raise HTTPException(409, {
+                    "loi": "o nay da co ticket dang mo",
+                    "ticket_id": dup["id"], "status": dup["status"],
+                })
+
+            cur.execute(
+                """INSERT INTO ticket
+                       (year, state, gender, name, field, title, expected_value,
+                        observed_at_open, evidence, blocking, from_rule_id,
+                        status, created_by)
+                   VALUES (%s,%s,%s,%s,'number',%s,%s,%s,%s,%s,%s,'open',%s)
+                   RETURNING id, created_at""",
+                (*key, body.title.strip(), str(body.expected_value), str(fact["number"]),
+                 body.evidence, body.blocking, body.from_rule_id, p.email))
+            t = cur.fetchone()
+            audit(cur, p.email, "ticket_open", "ticket", str(t["id"]),
+                  {"number": fact["number"]},
+                  {"expected": body.expected_value, "blocking": body.blocking,
+                   "title": body.title, "key": "/".join(map(str, key))})
         conn.commit()
 
-    return {"id": exc_id, "status": new_status, "version": new_version}
+    return {"id": t["id"], "status": "open", "key": list(key),
+            "observed_at_open": fact["number"], "expected_value": body.expected_value,
+            "blocking": body.blocking, "created_at": t["created_at"].isoformat()}
+
+
+@app.get("/api/tickets")
+def list_tickets(p: Me, status: str = Query("song"), limit: int = Query(100, ge=1, le=500)) -> dict:
+    """`status=song` la ticket chua dong; con lai loc dung mot trang thai."""
+    where, params = [], []
+    if status == "song":
+        where.append("status IN ('open','awaiting_verify')")
+    elif status:
+        where.append("status = %s"); params.append(status)
+
+    scope_sql, scope_params = scope_clause(p, None)
+    if scope_sql:
+        where.append(scope_sql); params += list(scope_params)
+    clause = f"WHERE {' AND '.join(where)}" if where else ""
+
+    with db() as conn, conn.cursor() as cur:
+        cur.execute(f"SELECT count(*) AS n FROM ticket {clause}", params)
+        total = cur.fetchone()["n"]
+        cur.execute(f"""SELECT * FROM ticket {clause}
+                        ORDER BY (status='open') DESC, blocking DESC, id DESC
+                        LIMIT %s""", [*params, limit])
+        rows = cur.fetchall()
+        blocking = len([t for t in open_tickets(cur, only_blocking=True)])
+    return {"total": total, "rows": rows, "blocking_open": blocking,
+            "can_set_blocking": p.has("team_lead", "admin")}
+
+
+class TicketAction(BaseModel):
+    action: str = Field(description="mark_fixed | set_blocking | cancel")
+    blocking: bool | None = None
+    reason: str = Field(min_length=3)
+
+
+@app.patch("/api/tickets/{ticket_id}")
+def update_ticket(ticket_id: int, body: TicketAction, p: Me) -> dict:
+    """Ba thao tac nguoi lam duoc. DONG ticket khong nam trong so do.
+
+    Dong la viec cua QC: no doc so that o lan nap ke tiep va doi chieu voi
+    `expected_value`. Cho nguoi tu bam dong thi quay lai dung cho cu —
+    trang thai noi da sua, du lieu thi chua.
+    """
+    if body.action not in {"mark_fixed", "set_blocking", "cancel"}:
+        raise HTTPException(400, "action phai la mark_fixed | set_blocking | cancel")
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM ticket WHERE id = %s FOR UPDATE", (ticket_id,))
+            t = cur.fetchone()
+            if not t:
+                raise HTTPException(404, f"khong co ticket {ticket_id}")
+            if t["status"] in {"closed", "cancelled"}:
+                raise HTTPException(409, f"ticket nay da o trang thai '{t['status']}'")
+            if not p.unrestricted and t["state"] not in p.scope_states:
+                raise HTTPException(403, f"ban khong co pham vi tren bang {t['state']}")
+
+            if body.action == "mark_fixed":
+                p.require("analyst", "team_lead", "admin")
+                cur.execute(
+                    """UPDATE ticket SET status='awaiting_verify', marked_fixed_by=%s,
+                              marked_fixed_at=now() WHERE id=%s""", (p.email, ticket_id))
+                new_status = "awaiting_verify"
+                audit(cur, p.email, "ticket_mark_fixed", "ticket", str(ticket_id),
+                      {"status": t["status"]}, {"status": new_status, "ly_do": body.reason})
+
+            elif body.action == "set_blocking":
+                # Doi mot ticket tu chan sang khong chan la mot quyet dinh
+                # that, khong phai bo loc giao dien: no mo cong phat hanh.
+                p.require("team_lead", "admin")
+                if body.blocking is None:
+                    raise HTTPException(400, "set_blocking thi phai gui kem blocking true/false")
+                cur.execute("UPDATE ticket SET blocking=%s WHERE id=%s", (body.blocking, ticket_id))
+                new_status = t["status"]
+                audit(cur, p.email, "ticket_set_blocking", "ticket", str(ticket_id),
+                      {"blocking": t["blocking"]},
+                      {"blocking": body.blocking, "ly_do": body.reason})
+
+            else:  # cancel — bao nham, khong phai loi
+                if t["created_by"] != p.email:
+                    p.require("team_lead", "admin")
+                cur.execute(
+                    """UPDATE ticket SET status='cancelled', closed_at=now() WHERE id=%s""",
+                    (ticket_id,))
+                new_status = "cancelled"
+                audit(cur, p.email, "ticket_cancel", "ticket", str(ticket_id),
+                      {"status": t["status"]}, {"status": new_status, "ly_do": body.reason})
+        conn.commit()
+
+    return {"id": ticket_id, "status": new_status,
+            "blocking": body.blocking if body.action == "set_blocking" else t["blocking"]}
 
 
 # ---------------------------------------------------------------- release
 
 class ReleaseBody(BaseModel):
     label: str = Field(min_length=3)
+    # Phieu duyet. Bat buoc khi ban ky con no: con vi pham luat, hoac con
+    # ticket chua dong. Rong thi API tu choi — mon no phai co nguoi dung ten.
+    approval_note: str = ""
 
 
 @app.post("/api/release")
 def release(body: ReleaseBody, p: Me) -> dict:
+    """Ky mot ban phat hanh.
+
+    QC khong co quyen phu quyet nguoi chiu trach nhiem: con vi pham luat
+    thi van ky duoc, mien la team lead viet phieu duyet. Nhung hai thu
+    van chan cung, va ca hai deu khong phai chuyen y kien:
+
+    - Ticket dang CHAN: loi da duoc xac nhan bang bang chung, khong phai
+      nghi ngo cua may. Muon ky thi go chan ticket — mot thao tac rieng,
+      co ten nguoi, co ly do.
+    - QC chua kiem lan nap hien tai: danh sach vi pham dang hien la cua
+      lan nap truoc. Ky luc nay la ky mot thu minh chua nhin thay.
+    """
     p.require("team_lead", "admin")
 
     with db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT count(*) AS n FROM qc_exception WHERE status='open' AND severity='critical'")
-            blocking = cur.fetchone()["n"]
-            if blocking:
-                # Cong phat hanh: con ngoai le nghiem trong thi khong ky duoc.
+            blockers = open_tickets(cur, only_blocking=True)
+            if blockers:
                 raise HTTPException(409, {
-                    "loi": "cong phat hanh dang khoa",
-                    "ngoai_le_nghiem_trong_con_mo": blocking,
+                    "loi": "con ticket dang chan phat hanh",
+                    "so_ticket": len(blockers),
+                    "ticket": [{"id": t["id"], "title": t["title"],
+                                "khoa": f"{t['state']}/{t['gender']}/{t['year']}/{t['name']}",
+                                "ky_vong": t["expected_value"],
+                                "dang_doc_duoc": t["last_observed"] or t["observed_at_open"],
+                                "status": t["status"]} for t in blockers[:20]],
+                    "go_the_nao": "sua o nguon roi cho QC xac minh, hoac go chan tung ticket "
+                                  "bang PATCH /api/tickets/{id} action=set_blocking",
                 })
 
-            cur.execute("""SELECT last_run_id, last_row_count, source_run_ids
-                           FROM sync_state WHERE id=1""")
-            st = cur.fetchone()
-            if not st or not st["last_run_id"]:
+            st = qc_state(cur)
+            if not st.get("last_run_id"):
                 raise HTTPException(409, "chua co lan dong bo nao de ky")
+            if st.get("qc_run_id") != st["last_run_id"]:
+                raise HTTPException(409, {
+                    "loi": "QC chua kiem lan nap hien tai",
+                    "lan_nap": st["last_run_id"],
+                    "qc_da_kiem": st.get("qc_run_id"),
+                    "y_nghia": "danh sach vi pham dang hien la cua lan nap truoc — "
+                               "cho QC chay xong roi ky",
+                })
+
+            v = violations_of(cur, st["last_run_id"])
+            con_no = open_tickets(cur)
+            note = body.approval_note.strip()
+            if (v["total"] or con_no) and len(note) < 10:
+                raise HTTPException(422, {
+                    "loi": "ban nay con no — phai co phieu duyet",
+                    "vi_pham": v["by_rule"], "so_vi_pham": v["total"],
+                    "ticket_chua_dong": [t["id"] for t in con_no],
+                    "can_gi": "gui approval_note noi ro vi sao van ky",
+                })
+
+            checksum = data_checksum(cur, st.get("source_run_ids"))
 
             # Dong bang danh sach lan nap du lieu. Thieu no thi Export Job
             # khong biet ban ky nay gom nhung gi, va se xuat ca nhung lan
             # nap den sau khi ky.
             cur.execute(
                 """INSERT INTO signed_version
-                       (run_id, source_run_ids, label, row_count, signed_by)
-                   VALUES (%s,%s,%s,%s,%s) RETURNING id, signed_at""",
-                (st["last_run_id"], json.dumps(st["source_run_ids"]),
-                 body.label, st["last_row_count"], p.email))
+                       (run_id, source_run_ids, label, row_count, checksum,
+                        violations, violations_fingerprint, rules_version,
+                        open_tickets, approval_note, signed_by)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   RETURNING id, signed_at""",
+                (st["last_run_id"], json.dumps(st.get("source_run_ids")),
+                 body.label, st["last_row_count"], checksum,
+                 json.dumps({r["rule_id"]: r["n"] for r in v["by_rule"]}),
+                 v["fingerprint"], st.get("rules_version"),
+                 json.dumps([t["id"] for t in con_no]), note or None, p.email))
             sv = cur.fetchone()
             audit(cur, p.email, "release", "signed_version", str(sv["id"]), None,
                   {"run_id": st["last_run_id"], "label": body.label,
-                   "source_run_ids": st["source_run_ids"]})
+                   "source_run_ids": st.get("source_run_ids"), "checksum": checksum,
+                   "so_vi_pham": v["total"], "van_tay_vi_pham": v["fingerprint"],
+                   "rules_version": st.get("rules_version"),
+                   "ticket_chua_dong": [t["id"] for t in con_no],
+                   "phieu_duyet": note or None})
         conn.commit()
 
     return {"id": sv["id"], "run_id": st["last_run_id"], "label": body.label,
-            "row_count": st["last_row_count"], "source_run_ids": st["source_run_ids"],
+            "row_count": st["last_row_count"], "source_run_ids": st.get("source_run_ids"),
+            "checksum": checksum, "violations": v["by_rule"],
+            "violations_fingerprint": v["fingerprint"],
+            "rules_version": st.get("rules_version"),
+            "open_tickets": [t["id"] for t in con_no],
+            "approval_note": note or None,
             "signed_at": sv["signed_at"].isoformat()}
 
 
 @app.get("/api/gate")
 def gate(p: Me) -> dict:
-    """Trang thai cong phat hanh — giao dien doc de hien banner."""
+    """Trang thai cong phat hanh.
+
+    Doi nghia so voi P3: vi pham luat khong con tu khoa cong. Chung la
+    nghi ngo cua may, va nghi ngo thi de nguoi doc roi quyet. Cai khoa
+    that chi con hai: ticket dang chan, va QC chua kiem lan nap hien tai.
+    """
     with db() as conn, conn.cursor() as cur:
-        cur.execute("""SELECT severity, count(*) AS n FROM qc_exception
-                       WHERE status='open' GROUP BY severity""")
-        counts = {r["severity"]: r["n"] for r in cur.fetchall()}
-        cur.execute("""SELECT id, label, run_id, signed_by, signed_at
+        st = qc_state(cur)
+        run = st.get("qc_run_id") or st.get("last_run_id")
+        v = violations_of(cur, run) if run else {"total": 0, "by_rule": [], "by_severity": {},
+                                                 "fingerprint": None, "run_id": None}
+        blockers = open_tickets(cur, only_blocking=True)
+        con_no = open_tickets(cur)
+        cur.execute("""SELECT id, label, run_id, signed_by, signed_at, checksum,
+                              violations, violations_fingerprint, rules_version,
+                              open_tickets, approval_note
                        FROM signed_version ORDER BY id DESC LIMIT 1""")
         last = cur.fetchone()
-    blocking = counts.get("critical", 0)
-    return {"locked": blocking > 0, "blocking": blocking, "open_by_severity": counts,
-            "last_signed": last}
+
+    stale = bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id"))
+    return {
+        "locked": bool(blockers) or stale,
+        "blocking_tickets": [{"id": t["id"], "title": t["title"],
+                              "khoa": f"{t['state']}/{t['gender']}/{t['year']}/{t['name']}",
+                              "status": t["status"]} for t in blockers],
+        "open_tickets": len(con_no),
+        "violations": {"total": v["total"], "by_severity": v["by_severity"],
+                       "by_rule": v["by_rule"], "fingerprint": v["fingerprint"]},
+        # Con no thi ky duoc, nhung phai kem phieu duyet.
+        "needs_approval": bool(v["total"] or con_no),
+        "qc_stale": stale, "run_id": st.get("last_run_id"), "qc_run_id": st.get("qc_run_id"),
+        "rules_version": st.get("rules_version"),
+        "last_signed": last,
+    }
 
 
 # ---------------------------------------------------------------- exports
@@ -450,10 +718,7 @@ def create_export(body: ExportBody, p: Me) -> dict:
 
     with db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT count(*) AS n FROM qc_exception WHERE status='open' AND severity='critical'")
-            if cur.fetchone()["n"]:
-                raise HTTPException(409, "cong phat hanh dang khoa, khong tai file duoc")
+            require_gate_open(cur)
 
             # File gui khach CHI duoc xuat tu ban da ky.
             cur.execute("""SELECT id, run_id, label, source_run_ids
@@ -502,7 +767,8 @@ def get_export(job_id: int, p: Me) -> dict:
             "format": job["format"], "scope_states": job["scope_states"],
             "row_count": job["row_count"], "warning": job["warning"],
             "signed_version_id": job["signed_version_id"],
-            "gcs_path": job["gcs_path"], "error": job["error"]}
+            "gcs_path": job["gcs_path"], "stamp_path": job["stamp_path"],
+            "error": job["error"]}
 
 
 # ---------------------------------------------------------------- options
@@ -536,9 +802,9 @@ def summary(
 ) -> dict:
     """So lieu cho dashboard. Mot lan goi thay vi sau lan goi roi rac.
 
-    Bo loc tren thanh cong cu duoc ap vao phan dem dong va dem ngoai le;
-    cong phat hanh va ban da ky thi luon la toan cuc — ky la ky ca bo
-    du lieu, khong ky rieng mot bang.
+    Bo loc tren thanh cong cu duoc ap vao phan dem dong va dem vi pham;
+    cong phat hanh, ticket chan va ban da ky thi luon la toan cuc — ky la
+    ky ca bo du lieu, khong ky rieng mot bang.
     """
     scope_sql, scope_params = scope_clause(p, state)
     where, params = ([scope_sql], list(scope_params)) if scope_sql else ([], [])
@@ -554,72 +820,81 @@ def summary(
                         FROM fact_current {clause}""", params)
         facts = cur.fetchone()
 
-        # Ngoai le: cung bo loc, nhung khoa cua ngoai le co the NULL
-        # (luat theo nhom nhu thi_phan_khong_tron_100 khong gan vao mot ten).
+        st = qc_state(cur)
+        run = st.get("qc_run_id") or st.get("last_run_id")
+
+        # Vi pham: cung bo loc, nhung khoa cua vi pham co the NULL (luat
+        # theo nhom nhu thi_phan_khong_tron_100 khong gan vao mot ten).
         extra = f" AND {' AND '.join(where)}" if where else ""
+        base = ["run_id = %s"] if run else ["false"]
+        vparams = ([run] if run else []) + params
 
         cur.execute(
             f"""SELECT severity, count(*) AS n FROM qc_exception
-                WHERE status='open'{extra} GROUP BY severity""", params)
+                WHERE {base[0]}{extra} GROUP BY severity""", vparams)
         by_severity = {r["severity"]: r["n"] for r in cur.fetchall()}
 
         cur.execute(
             f"""SELECT rule_id, severity, count(*) AS n FROM qc_exception
-                WHERE status='open'{extra} GROUP BY rule_id, severity ORDER BY n DESC""", params)
+                WHERE {base[0]}{extra} GROUP BY rule_id, severity ORDER BY n DESC""", vparams)
         by_rule = cur.fetchall()
 
         cur.execute(
             f"""SELECT state, count(*) AS n FROM qc_exception
-                WHERE status='open' AND state IS NOT NULL{extra}
-                GROUP BY state ORDER BY n DESC LIMIT 12""", params)
+                WHERE {base[0]} AND state IS NOT NULL{extra}
+                GROUP BY state ORDER BY n DESC LIMIT 12""", vparams)
         by_state = cur.fetchall()
 
-        cur.execute(
-            f"SELECT count(*) AS n FROM qc_exception WHERE status <> 'open'{extra}", params)
-        resolved = cur.fetchone()["n"]
-
-        # So dong bi gan co = so khoa tu nhien khac nhau dang co ngoai le mo.
+        # So dong bi gan co = so khoa tu nhien khac nhau dang vi pham.
         cur.execute(
             f"""SELECT count(DISTINCT (year, state, gender, name)) AS n FROM qc_exception
-                WHERE status='open' AND name IS NOT NULL{extra}""", params)
+                WHERE {base[0]} AND name IS NOT NULL{extra}""", vparams)
         flagged = cur.fetchone()["n"]
 
-        ov_scope, ov_params = scope_clause(p, state)
+        # Ticket: dem trong pham vi de nguoi dung thay phan viec cua minh,
+        # nhung ticket CHAN thi dem toan cuc — no chan ca he thong.
+        t_scope, t_params = scope_clause(p, state)
+        t_clause = f" AND {t_scope}" if t_scope else ""
         cur.execute(
-            f"""SELECT count(*) AS n FROM fact_override
-                {f'WHERE {ov_scope}' if ov_scope else ''}""", ov_params)
-        overrides = cur.fetchone()["n"]
+            f"""SELECT status, count(*) AS n FROM ticket
+                WHERE status IN ('open','awaiting_verify'){t_clause}
+                GROUP BY status""", t_params)
+        tickets_by_status = {r["status"]: r["n"] for r in cur.fetchall()}
+        blockers = open_tickets(cur, only_blocking=True)
 
-        # Cong phat hanh la TOAN CUC: no khoa ca bo du lieu chu khong khoa
-        # rieng pham vi cua ai. Analyst Texas phai thay dung con so dang
-        # chan phat hanh, ke ca khi ngoai le nam o bang khac.
-        cur.execute("""SELECT count(*) AS n FROM qc_exception
-                       WHERE status='open' AND severity='critical'""")
-        blocking = cur.fetchone()["n"]
+        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at,
+                              checksum, violations, violations_fingerprint,
+                              rules_version, open_tickets, approval_note
+                       FROM signed_version ORDER BY id DESC LIMIT 1""")
+        signed = cur.fetchone()
+
+        tickets_since = 0
+        if signed:
+            cur.execute("SELECT count(*) AS n FROM ticket WHERE created_at > %s",
+                        (signed["signed_at"],))
+            tickets_since = cur.fetchone()["n"]
 
         cur.execute("""SELECT last_run_id, last_synced_at, last_row_count, status
                        FROM sync_state WHERE id = 1""")
         sync = cur.fetchone()
-        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at
-                       FROM signed_version ORDER BY id DESC LIMIT 1""")
-        signed = cur.fetchone()
 
-        since = 0
-        if signed:
-            cur.execute("SELECT count(*) AS n FROM fact_override WHERE created_at > %s",
-                        (signed["signed_at"],))
-            since = cur.fetchone()["n"]
+        v_now = violations_of(cur, run) if run else None
 
     rows_now = sync["last_row_count"] if sync else None
+    stale = bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id"))
     return {
         "scope": "tat ca" if p.unrestricted else sorted(p.scope_states),
         "filters": {"state": state, "year": year, "gender": gender},
         "facts": facts,
         "exceptions": {"open": sum(by_severity.values()), "by_severity": by_severity,
                        "by_rule": by_rule, "by_state": by_state,
-                       "resolved": resolved, "flagged_rows": flagged},
-        "overrides": overrides,
-        "gate": {"locked": blocking > 0, "blocking": blocking},
+                       "flagged_rows": flagged, "run_id": run},
+        "tickets": {"open": tickets_by_status.get("open", 0),
+                    "awaiting_verify": tickets_by_status.get("awaiting_verify", 0),
+                    "blocking": len(blockers)},
+        "gate": {"locked": bool(blockers) or stale, "blocking": len(blockers),
+                 "qc_stale": stale,
+                 "needs_approval": bool((v_now and v_now["total"]) or sum(tickets_by_status.values()))},
         "last_signed": signed,
         "delta": {
             # Chenh lech so voi ban da ky gan nhat — cai nguoi duyet can
@@ -628,31 +903,40 @@ def summary(
             "rows_signed": signed["row_count"] if signed else None,
             "rows_now": rows_now,
             "rows_delta": (rows_now - signed["row_count"]) if signed and rows_now else None,
-            "overrides_since": since,
+            "tickets_since": tickets_since,
+            # Van tay doi = tap vi pham da KHAC, du tong so co the y het.
+            # Day la thu duy nhat phan biet "van 3 o cu" voi "3 o khac".
+            "violations_changed": bool(
+                signed and v_now and signed["violations_fingerprint"]
+                and signed["violations_fingerprint"] != v_now["fingerprint"]),
+            "violations_signed": signed["violations"] if signed else None,
+            "violations_now": {r["rule_id"]: r["n"] for r in by_rule},
         },
         "sync": sync,
     }
 
 
-# ------------------------------------------------------- chi tiet ngoai le
+# -------------------------------------------------------- chi tiet vi pham
 
 @app.get("/api/exceptions/{exc_id}")
 def exception_detail(exc_id: int, p: Me) -> dict:
     """Tat ca thu panel dieu tra can, trong MOT lan goi.
 
-    Quan trong nhat la `expected_version`: client phai gui lai dung so
-    nay khi ap so moi, neu khong khoa lac quan se tu choi.
+    Panel nay chi de DOC va de quyet dinh co mo ticket hay khong — khong
+    con o nhap so nao o day. Vi vay no dat ban da ky gan nhat canh lan nap
+    hien tai: cau hoi that su la "so nay co that su doi khong", chu khong
+    phai "sua thanh bao nhieu".
     """
     with db() as conn, conn.cursor() as cur:
         cur.execute("SELECT * FROM qc_exception WHERE id = %s", (exc_id,))
         exc = cur.fetchone()
         if not exc:
-            raise HTTPException(404, f"khong co ngoai le {exc_id}")
+            raise HTTPException(404, f"khong co vi pham {exc_id}")
         if not p.unrestricted and exc["state"] not in p.scope_states:
             raise HTTPException(403, f"ban khong co pham vi tren bang {exc['state']}")
 
         key = (exc["year"], exc["state"], exc["gender"], exc["name"])
-        fact = override = None
+        fact = ticket = None
         history: list = []
         if all(k is not None for k in key):
             cur.execute(
@@ -662,22 +946,22 @@ def exception_detail(exc_id: int, p: Me) -> dict:
                    WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
             fact = cur.fetchone()
             cur.execute(
-                """SELECT old_value, new_value, reason, version, created_by, created_at
-                   FROM fact_override
-                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'""", key)
-            override = cur.fetchone()
+                """SELECT * FROM ticket
+                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'
+                   ORDER BY (status IN ('open','awaiting_verify')) DESC, id DESC LIMIT 1""", key)
+            ticket = cur.fetchone()
             cur.execute(
                 """SELECT actor, action, before, after, created_at FROM audit_log
-                   WHERE entity_key = %s ORDER BY id DESC LIMIT 10""",
-                ("/".join(map(str, key)),))
+                   WHERE entity_key = %s OR entity_key = %s ORDER BY id DESC LIMIT 10""",
+                ("/".join(map(str, key)), str(ticket["id"]) if ticket else "-"))
             history = cur.fetchall()
 
-        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at
+        cur.execute("""SELECT id, label, run_id, row_count, signed_by, signed_at, checksum
                        FROM signed_version ORDER BY id DESC LIMIT 1""")
         signed = cur.fetchone()
 
-    return {"exception": exc, "fact": fact, "override": override,
-            "expected_version": override["version"] if override else 0,
+    return {"exception": exc, "fact": fact, "ticket": ticket,
+            "can_open_ticket": p.has("analyst", "team_lead", "admin"),
             "last_signed": signed, "history": history}
 
 
@@ -687,7 +971,10 @@ def exception_detail(exc_id: int, p: Me) -> dict:
 def versions(p: Me, limit: int = Query(50, ge=1, le=200)) -> dict:
     """Danh sach ban da ky — ai ky, luc nao, da gui cho ai."""
     with db() as conn, conn.cursor() as cur:
-        cur.execute("""SELECT id, run_id, label, row_count, signed_by, signed_at
+        cur.execute("""SELECT id, run_id, label, row_count, signed_by, signed_at,
+                              source_run_ids, checksum, violations,
+                              violations_fingerprint, rules_version,
+                              open_tickets, approval_note
                        FROM signed_version ORDER BY id DESC LIMIT %s""", (limit,))
         rows = cur.fetchall()
         if rows:
@@ -765,10 +1052,7 @@ def download_export(job_id: int, p: Me) -> dict:
             raise HTTPException(404, f"khong co job {job_id}")
         if job["requested_by"] != p.email and not p.has("admin", "team_lead"):
             raise HTTPException(403, "khong phai job cua ban")
-        cur.execute(
-            "SELECT count(*) AS n FROM qc_exception WHERE status='open' AND severity='critical'")
-        if cur.fetchone()["n"]:
-            raise HTTPException(409, "cong phat hanh dang khoa, khong tai file duoc")
+        require_gate_open(cur)
 
     if job["status"] != "done" or not job["gcs_path"]:
         raise HTTPException(409, f"job dang o trang thai '{job['status']}', chua co file")

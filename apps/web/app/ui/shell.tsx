@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { useGate, useOpenCount } from "@/app/lib/queries";
+import { useGate, useOpenCount, useTickets } from "@/app/lib/queries";
 
 import FilterBar from "./filter-bar";
 import Identity from "./identity";
@@ -13,7 +13,8 @@ import StatusStrip from "./status-strip";
 const TABS = [
   { href: "/", label: "Dashboard" },
   { href: "/data", label: "Dữ liệu" },
-  { href: "/exceptions", label: "Ngoại lệ", badge: true },
+  { href: "/exceptions", label: "Vi phạm", badge: "vi_pham" },
+  { href: "/tickets", label: "Ticket", badge: "ticket" },
   { href: "/versions", label: "Phiên bản" },
   { href: "/requests", label: "Yêu cầu dữ liệu" },
 ];
@@ -22,7 +23,13 @@ export default function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { data: gate } = useGate();
   const { data: count } = useOpenCount();
-  const open = count?.total ?? 0;
+  const { data: tickets } = useTickets();
+  // Hai con so khac nhau va phai giu khac nhau: vi pham la nghi ngo cua
+  // may o lan nap nay, ticket la loi da xac nhan dang cho nguon sua.
+  const badges: Record<string, number> = {
+    vi_pham: count?.total ?? 0,
+    ticket: tickets?.total ?? 0,
+  };
 
   return (
     <>
@@ -41,9 +48,19 @@ export default function Shell({ children }: { children: ReactNode }) {
                 data-on={pathname === t.href ? "1" : "0"}
               >
                 {t.label}
-                {t.badge && open ? (
-                  <span className="tab-badge" title={gate?.locked ? "cổng phát hành đang khoá" : ""}>
-                    {open}
+                {t.badge && badges[t.badge] ? (
+                  <span
+                    className="tab-badge"
+                    data-crit={t.badge === "ticket" && tickets?.blocking_open ? "1" : "0"}
+                    title={
+                      t.badge === "ticket" && tickets?.blocking_open
+                        ? `${tickets.blocking_open} ticket đang chặn phát hành`
+                        : gate?.locked
+                          ? "cổng phát hành đang khoá"
+                          : ""
+                    }
+                  >
+                    {badges[t.badge]}
                   </span>
                 ) : null}
               </Link>

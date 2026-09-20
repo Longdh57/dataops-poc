@@ -66,22 +66,26 @@ export default function DataPage() {
       { field: "gender", headerName: "Giới", width: 80, cellClass: "cell-mono" },
       { field: "name", headerName: "Tên", flex: 1, minWidth: 140, cellClass: "cell-strong" },
       {
-        field: "number", headerName: "Số trẻ", width: 150, type: "rightAligned",
+        // So o day LUON la so cua nguon. Nhan "có ticket" chi noi rang o
+        // nay dang cho team Data sua — no khong thay so, vi ung dung nay
+        // khong sua so.
+        field: "number", headerName: "Số trẻ", width: 170, type: "rightAligned",
         valueFormatter: (p) => num(p.value as number),
         cellRenderer: (p: { data?: Fact; value: number }) =>
-          p.data?.overridden ? (
+          p.data?.ticket_id ? (
             <span>
-              <span className="pill pill-warn" style={{ marginRight: 7 }}>đã sửa</span>
+              <span
+                className={p.data.ticket_blocking ? "pill pill-crit" : "pill pill-warn"}
+                style={{ marginRight: 7 }}
+                title={`ticket #${p.data.ticket_id} — nguồn phải sửa thành ${p.data.ticket_expected}`}
+              >
+                ticket
+              </span>
               {num(p.value)}
             </span>
           ) : (
             num(p.value)
           ),
-      },
-      {
-        field: "number_raw", headerName: "Số gốc", width: 120, type: "rightAligned",
-        valueFormatter: (p) => num(p.value as number),
-        cellClass: "cell-dim",
       },
       {
         field: "market_share", headerName: "Thị phần", width: 120, type: "rightAligned",
@@ -93,7 +97,11 @@ export default function DataPage() {
         valueFormatter: (p) => num(p.value as number),
         cellClass: "cell-dim",
       },
-      { field: "override_reason", headerName: "Lý do sửa", width: 200, cellClass: "cell-dim" },
+      {
+        field: "ticket_expected", headerName: "Ticket yêu cầu", width: 150,
+        type: "rightAligned", cellClass: "cell-dim",
+        valueFormatter: (p) => (p.value ? String(p.value) : ""),
+      },
     ],
     [],
   );

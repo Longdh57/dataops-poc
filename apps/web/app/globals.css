@@ -79,15 +79,19 @@ a { color: inherit; }
 }
 .tab:hover { background: var(--surface2); }
 .tab[data-on="1"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+/* Mac dinh la mau canh bao chu khong phai mau do: vi pham luat khong
+   khoa cong phat hanh nua, no chi la nghi ngo cho nguoi doc. Chi ticket
+   dang chan moi duoc to do. */
 .tab-badge {
   font-family: var(--mono);
   font-size: 10px;
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: var(--crit-soft);
-  color: var(--crit);
+  background: var(--warn-soft);
+  color: var(--warn);
 }
+.tab-badge[data-crit="1"] { background: var(--crit-soft); color: var(--crit); }
 
 .page { max-width: 1360px; margin: 0 auto; padding: 22px 20px 72px; }
 

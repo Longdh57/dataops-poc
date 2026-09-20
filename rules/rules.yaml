@@ -3,7 +3,9 @@
 #
 # Moi luat co nam phan:
 #   id       — dinh danh, hien tren giao dien va trong bang qc_exception
-#   severity — critical | warning | info. CHI critical moi khoa cong phat hanh
+#   severity — critical | warning | info. Chi de xep thu tu doc va de loc:
+#              tu P6, vi pham KHONG khoa cong phat hanh nua (xem
+#              docs/quy-trinh-chat-luong.md). Chi ticket moi chan duoc
 #   scope    — (tuy chon) danh sach bang luat nay ap dung. Bo di = moi bang
 #   message  — cau nguoi dung doc khi gap ngoai le nay
 #   sql      — SELECT tra ve khoa tu nhien (year, state, gender, name) va
@@ -14,10 +16,9 @@
 # Job se tu choi chay neu file nay sai cau truc — sai o dau bao o day,
 # khong de den luc SQL no ra loi kho hieu.
 
+# Doi `version` moi khi sua bo luat: so nay duoc ghi vao tung ban ky, de sau
+# nay tai hien duoc team lead da duyet duoi bo luat nao.
 version: 2
-
-gate:
-  blocking_severities: [critical]
 
 rules:
   # --- Toan ven du lieu: phai luon bang 0, khac 0 la sai o khau nap ---

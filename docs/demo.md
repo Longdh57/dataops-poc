@@ -13,11 +13,12 @@ Chuẩn bị trước: mở sẵn hai tab — ứng dụng và một cửa sổ 
 > soát và sửa làm bằng bảng tính và email: không biết ai sửa gì, và không
 > có gì chặn một bản còn lỗi bị gửi cho khách."
 
-Mở dashboard. Chỉ vào dải đỏ trên cùng.
+Mở dashboard. Chỉ vào dải trạng thái trên cùng.
 
-> "Đây là cùng một vòng đời đó, nhưng ở một nơi. Cổng phát hành **đang
-> khoá** vì còn 20 ngoại lệ nghiêm trọng. Chừng nào nó còn đỏ thì không ai
-> ký được và không ai tải file được — kể cả khi gọi thẳng vào API."
+> "Đây là cùng một vòng đời đó, nhưng ở một nơi. Dải này nói bản hiện tại
+> **còn nợ những gì**: bao nhiêu chỗ máy nghi ngờ, bao nhiêu lỗi đã xác
+> nhận đang chờ nguồn sửa. Và có một loại nợ mà không ai duyệt cho qua được
+> — kể cả khi gọi thẳng vào API."
 
 ---
 
@@ -40,7 +41,7 @@ Chỉ vào banner độ tươi.
 
 ## 1:15 — Một con số sai (90 giây)
 
-Sang tab *Ngoại lệ*. Chọn một dòng `tang_dot_bien`.
+Sang tab *Vi phạm*. Chọn một dòng `tang_dot_bien`.
 
 > "Luật QC khai báo trong một file YAML, thêm luật mới không cần sửa code.
 > Luật này bắt được những chỗ tăng hơn 10 lần so với năm trước."
@@ -50,39 +51,58 @@ Panel mở bên phải.
 > "Bên trái là bản đã ký gần nhất, bên phải là lần nạp này. Người xử lý thấy
 > ngay số nào đổi, không phải mở file khác để đối chiếu."
 
-Gõ số mới và lý do. **Trước khi bấm Áp dụng**, chạy ở terminal:
+Chỉ vào chỗ **không có** ô nhập số.
+
+> "Đây là quyết định quan trọng nhất của cả hệ thống: ứng dụng này **không
+> sửa số**. Sửa ở đây thì file bán ra và BigQuery lệch nhau, và không ai
+> phát hiện. Số sai thì nguồn phải đổi."
+
+Điền *Số đúng phải là*, tiêu đề, rồi bấm *Mở ticket*.
+
+> "Con số vừa gõ không phải để hiển thị — nó là **điều kiện nghiệm thu**.
+> QC sẽ đọc số thật ở lần nạp kế tiếp và đối chiếu với đúng con số này."
+
+Sang tab *Ticket*. Chỉ vào ticket vừa tạo, đang chặn.
+
+> "Không có nút Đóng ở đây. Team Data sửa xong thì bấm *Đã sửa nguồn* —
+> ticket chuyển sang **chờ QC xác minh**, chứ không đóng. Đóng là việc của
+> máy: lần nạp sau đọc đúng số thì nó tự đóng, lệch thì nó bật lại kèm số
+> đọc được."
+
+Bấm *Đã sửa nguồn* với một lý do. Chạy ở terminal:
 
 ```bash
-docker exec dashboard-bigquery-db-1 psql -U dataops -d dataops -c \
-  "UPDATE fact_override SET new_value='777', version=version+1 WHERE name='<tên>'"
+gcloud run jobs execute dataops-qc --region=asia-southeast1 \
+  --update-env-vars=FORCE_QC=1
 ```
 
-> "Giả sử đúng lúc này, một đồng nghiệp vừa sửa cùng dòng đó."
+Tải lại trang.
 
-Bấm *Áp dụng số mới*. Màn hình đỏ lên với ba con số.
-
-> "Số của tôi **không** được ghi. Hệ thống đưa ra ba con số — số gốc, số
-> trên máy chủ, số tôi định ghi — rồi để tôi quyết định. Đây là chỗ bảng
-> tính luôn thua: hai người sửa cùng lúc thì một người mất việc mà không ai
-> biết."
-
-Bấm *Ghi đè có chủ đích*.
-
-> "Ghi đè là một quyết định có chủ ý, và nó vào audit log kèm lý do."
+> "Nguồn chưa sửa thật, nên QC bật ticket về lại — và ghi rõ nó đọc được số
+> bao nhiêu. Đây là chỗ mọi quy trình bằng email thua: 'đã sửa rồi' là lời
+> hứa, còn cái này là bằng chứng."
 
 ---
 
-## 2:45 — Mở cổng và ký (60 giây)
+## 2:45 — Ký kèm phiếu duyệt (60 giây)
 
-Xử lý nốt các ngoại lệ còn lại (chuẩn bị trước cho nhanh). Quay về dashboard.
+Sang tab *Ticket*, gỡ chặn ticket vừa rồi với lý do. Sang tab *Phiên bản*.
 
-> "Hết ngoại lệ nghiêm trọng, cổng chuyển xanh."
+> "Còn 382 chỗ vi phạm luật, và cổng vẫn cho ký. Vì vi phạm chỉ là **nghi
+> ngờ của máy** — phần lớn là số thật của bang nhỏ. Máy không có quyền phủ
+> quyết người chịu trách nhiệm."
 
-Sang tab *Phiên bản*, ký với nhãn có ý nghĩa.
+Chỉ vào ô phiếu duyệt.
 
-> "Ký là đóng băng: bản này ghi lại đúng những lần nạp dữ liệu nào nằm trong
-> nó. Dữ liệu team Data đẩy lên sau thời điểm này sẽ không lọt vào file gửi
-> khách — cho tới khi có người ký bản mới."
+> "Đổi lại, muốn ký thì phải viết ra vì sao. Câu này đi theo bản ký vĩnh
+> viễn và in luôn vào file gửi khách."
+
+Ký với nhãn có ý nghĩa. Chỉ vào cột *Nợ lúc ký* của dòng vừa xuất hiện.
+
+> "Bản ký ghi lại bốn thứ: những lần nạp nào nằm trong nó, còn vi phạm gì và
+> bao nhiêu ô, ticket nào chưa đóng, và một vân tay của dữ liệu. Vân tay là
+> để bắt trường hợp team Data sửa số **tại chỗ** dưới cùng một nhãn — lúc đó
+> nhãn vẫn thế mà số đã khác."
 
 ---
 
@@ -100,9 +120,14 @@ Sang tab *Yêu cầu dữ liệu*, chọn Excel, gửi yêu cầu.
 Khi xong, chỉ vào dòng trong bảng.
 
 > "170 nghìn dòng, chỉ CA và TX. Không phải giao diện lọc hộ — máy chủ lọc,
-> nên sửa tham số trên URL cũng không lấy thêm được bang nào. File xuất
-> thẳng từ BigQuery rồi áp các ô đã sửa tay lên trên, và thị phần được tính
-> lại cho nhóm bị sửa để khách cộng lại vẫn tròn 100%."
+> nên sửa tham số trên URL cũng không lấy thêm được bang nào. Số trong file
+> là số của BigQuery, không qua tay ai."
+
+Mở file `.ban-ky.txt` đi kèm.
+
+> "Và file không đi một mình. Đây là dấu bản ký: ký lúc nào, ai ký, còn vi
+> phạm gì, ticket nào chưa đóng, kèm nguyên văn phiếu duyệt. Sale biết mình
+> đang cầm bản sạch hay bản có nợ — trước đây hai thứ đó trông y hệt nhau."
 
 ---
 
@@ -110,7 +135,8 @@ Khi xong, chỉ vào dòng trong bảng.
 
 > "Toàn bộ hạ tầng là Terraform, dựng lại cho một dataset khác mất khoảng 15
 > phút. Chi phí chạy khoảng 12–17 đô một tháng. Và điều quan trọng nhất vẫn
-> là dải đỏ lúc đầu: số sai không đi ra ngoài được."
+> là chỗ không có ô nhập số: hệ thống không giấu lỗi đi bằng cách sửa đè lên
+> nó. Lỗi hoặc được sửa ở nguồn, hoặc được ghi ra kèm tên người cho qua."
 
 ---
 
@@ -120,24 +146,24 @@ Khi xong, chỉ vào dòng trong bảng.
 # 1. Dữ liệu và người dùng
 gcloud run jobs execute dataops-seed --region=asia-southeast1
 
-# 2. Sinh lại ngoại lệ để cổng đang khoá lúc bắt đầu
+# 2. Sinh lại vi phạm cho lần nạp hiện tại
 gcloud run jobs execute dataops-qc --region=asia-southeast1 \
   --update-env-vars=FORCE_QC=1
 
-# 3. Kiểm tra cổng đang khoá
+# 3. Xem hệ thống đang nợ gì
 curl -s https://dataops-dev.3ddesigns.xyz/api/gw/gate | python3 -m json.tool
 ```
 
-Nếu cổng đang mở mà muốn khoá lại cho demo: mở lại vài ngoại lệ nghiêm trọng.
+Dọn ticket của buổi demo trước:
 
 ```sql
-UPDATE qc_exception SET status='open', resolved_at=NULL, resolved_by=NULL
-WHERE severity='critical' AND status <> 'open';
+DELETE FROM ticket WHERE created_by LIKE '%dataops.test';
 ```
 
-Hai chỗ dễ vấp khi demo:
+Ba chỗ dễ vấp khi demo:
 
-- **Ký xong mới xin file.** Xin file khi chưa ký bản nào thì API trả 409 —
-  đúng thiết kế, nhưng sẽ làm hỏng mạch kể chuyện.
+- **QC phải chạy sau lần nạp cuối.** `qc_stale` bật là không ký được — đúng
+  thiết kế, nhưng sẽ làm hỏng mạch kể chuyện. Bước 2 ở trên lo việc đó.
+- **Ký xong mới xin file.** Xin file khi chưa ký bản nào thì API trả 409.
 - **Bản ký cũ không xuất được.** Bản ký từ trước khi hệ thống biết ghi lại
   danh sách lần nạp sẽ bị Export Job từ chối. Ký một bản mới trước buổi demo.

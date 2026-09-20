@@ -39,9 +39,15 @@ def _row(sql: str, args=()):
         return cur.fetchone()
 
 
+# Ban ky trong moi truong test gan nhu luon con no (du lieu mau co san vi
+# pham), nen moi lan ky deu phai kem phieu duyet — dung nhu nguoi that.
+PHIEU = "ban kiem thu tu dong, khong gui khach"
+
+
 def _ky_ban_tam(client) -> int:
     """Ky mot ban mang nhan test de fixture don duoc sau do."""
-    r = client.post("/api/release", json={"label": f"{NHAN} ban de xin file"},
+    r = client.post("/api/release",
+                    json={"label": f"{NHAN} ban de xin file", "approval_note": PHIEU},
                     headers=as_user(LEAD))
     assert r.status_code == 200, r.text
     return r.json()["id"]
@@ -52,7 +58,8 @@ def test_ky_dong_bang_danh_sach_lan_nap(client):
     if not _gate_mo(client):
         pytest.skip("cong dang khoa, khong ky duoc")
 
-    r = client.post("/api/release", json={"label": f"{NHAN} dong bang lan nap"},
+    r = client.post("/api/release",
+                    json={"label": f"{NHAN} dong bang lan nap", "approval_note": PHIEU},
                     headers=as_user(LEAD))
     assert r.status_code == 200, r.text
     runs = r.json()["source_run_ids"]
@@ -63,6 +70,11 @@ def test_ky_dong_bang_danh_sach_lan_nap(client):
 
     trong_sync = _row("SELECT source_run_ids FROM sync_state WHERE id = 1")
     assert runs == trong_sync[0], "phai dung danh sach ban sao dang giu"
+
+    # Va ban ky phai tu noi duoc no gom gi: van tay du lieu bat duoc truong
+    # hop team Data sua so TAI CHO duoi cung mot run_id — luc do nhan van
+    # the ma so da khac.
+    assert r.json()["checksum"], "ban ky phai co van tay du lieu"
 
 
 def test_xin_file_ghi_lai_dinh_dang_va_pham_vi_cua_nguoi_xin(client):

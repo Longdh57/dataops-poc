@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
-import type { Gate, Me, Options, Summary, VersionInfo } from "./types";
+import type { Gate, Me, Options, Summary, Ticket, VersionInfo } from "./types";
 
 export const useMe = () =>
   useQuery({ queryKey: ["me"], queryFn: () => gw<Me>("/me"), staleTime: 60_000 });
@@ -15,12 +15,22 @@ export const useMe = () =>
 export const useGate = () =>
   useQuery({ queryKey: ["gate"], queryFn: () => gw<Gate>("/gate") });
 
-/** So ngoai le dang mo TRONG PHAM VI nguoi dung — badge tren tab.
- *  Khong dung /gate vi cong phat hanh la toan cuc, con hop thu thi khong. */
+/** So vi pham cua lan nap hien tai TRONG PHAM VI nguoi dung — badge tab.
+ *  Khong dung /gate vi cong phat hanh la toan cuc, con vi pham thi khong. */
 export const useOpenCount = () =>
   useQuery({
     queryKey: ["exceptions", "count"],
     queryFn: () => gw<{ total: number }>("/exceptions?limit=1"),
+  });
+
+/** Ticket chua dong trong pham vi — badge tab va trang Ticket dung chung. */
+export const useTickets = (status = "song") =>
+  useQuery({
+    queryKey: ["tickets", status],
+    queryFn: () =>
+      gw<{ total: number; rows: Ticket[]; blocking_open: number; can_set_blocking: boolean }>(
+        `/tickets${qs({ status, limit: 300 })}`,
+      ),
   });
 
 export const useOptions = () =>

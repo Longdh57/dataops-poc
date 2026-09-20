@@ -9,7 +9,8 @@ Bảng tra nhanh:
 | Tình huống | Mục |
 |---|---|
 | Số trên màn hình có vẻ cũ | [Làm mới bảng khác Nạp lại từ nguồn](#làm-mới-bảng-khác-nạp-lại-từ-nguồn) |
-| Ngoại lệ vừa xử lý xong lại hiện ra | [Ngoại lệ đã xử lý lại hiện ra](#ngoại-lệ-đã-xử-lý-lại-hiện-ra) |
+| Vi phạm vừa xem xong lại hiện ra | [Vi phạm lại hiện ra sau khi sync](#vi-phạm-lại-hiện-ra-sau-khi-sync) |
+| Cổng phát hành khoá mà không rõ vì sao | [Cổng phát hành khoá…](#cổng-phát-hành-khoá-mà-không-thấy-vi-phạm-nghiêm-trọng-nào) |
 | Cảnh báo "Sync Job im lặng quá 30 phút" | [Khi đồng bộ hỏng](#khi-đồng-bộ-hỏng) |
 | Sale báo file tải về sai | [Khi file xuất sai](#khi-file-xuất-sai) |
 | Cần quay lại số liệu của bản trước | [Quay lại phiên bản trước](#quay-lại-phiên-bản-trước) |
@@ -42,29 +43,43 @@ Bấm *Nạp lại từ nguồn* chỉ để ép nó chạy ngay thay vì chờ 
 
 ---
 
-## Ngoại lệ đã xử lý lại hiện ra
+## Vi phạm lại hiện ra sau khi sync
 
-**Dấu hiệu:** hộp thư ngoại lệ vừa dọn sạch, sau một lần nạp mới lại đầy đúng
-những lỗi cũ; cổng phát hành khoá lại.
+**Dấu hiệu:** danh sách vi phạm vừa xem xong, sau một lần nạp mới lại đầy đúng
+những lỗi cũ.
 
-**Đây là hành vi đúng của code hiện tại, không phải hỏng.** QC sinh ngoại lệ
-theo từng lần nạp. Có lần nạp mới thì `fact_current` bị thay nguyên khối, QC
-quét lại toàn bộ luật và sinh ra một bộ ngoại lệ `open` mới. Quyết định cũ
-không mất — chúng vẫn nằm đó với lần nạp cũ, xem bằng bộ lọc trạng thái trên
-trang *Ngoại lệ* — nhưng hộp thư lọc theo trạng thái chứ không theo lần nạp,
-nên bộ mới đổ hết vào.
+**Đây là hành vi đúng, không phải hỏng.** Vi phạm là ảnh chụp của **một lần
+nạp**: QC quét lại toàn bộ luật sau mỗi lần nạp và thay thế cả bộ. Không có
+trạng thái "đã xử lý" nào mang sang lần sau — và đó là chủ ý, vì một dấu "đã bỏ
+qua" từ tháng trước có thể nuốt mất một lỗi mới xuất hiện ở đúng ô đó.
 
-Hai điều cần biết:
+Cái **có** mang sang là hai thứ khác:
 
-- **Ô đã bấm *Áp dụng số mới* cũng hiện lại.** Override nằm ở `fact_override`
-  và chỉ được ghép vào lúc đọc; luật QC thì query thẳng `fact_current`. Sửa tay
-  không làm lỗi biến mất dưới mắt QC.
-- **Nạp lại từ nguồn khi nguồn không đổi thì không có gì xảy ra cả.** Sync Job
-  dừng ngay ở bước so vân tay, không sinh lần nạp mới, hộp thư giữ nguyên.
+- **Ticket** — lỗi đã xác nhận, sống xuyên qua các lần nạp cho tới khi QC đọc
+  được đúng số kỳ vọng ở nguồn. Xem trang *Ticket*.
+- **Phiếu duyệt** — nằm trong bản ký cũ, không mất đi. Nó nói bản đó đã được ký
+  kèm những vi phạm nào.
 
-Việc cần làm lúc này: xử lý lại bộ ngoại lệ mới. Đây là điểm yếu đã biết của
-quy trình chứ không phải sự cố; cách khép vòng nằm ở
-[Quy trình chất lượng dữ liệu](quy-trinh-chat-luong.md).
+Vậy nên việc cần làm không phải là "xử lý lại": đọc danh sách, cái nào là số
+thật thì ghi vào phiếu duyệt lúc ký, cái nào sai thật thì mở ticket.
+
+**Nạp lại từ nguồn khi nguồn không đổi thì không có gì xảy ra cả** — Sync Job
+dừng ngay ở bước so vân tay, không sinh lần nạp mới.
+
+---
+
+## Cổng phát hành khoá mà không thấy vi phạm nghiêm trọng nào
+
+Từ P6, vi phạm luật **không còn khoá cổng**. Chỉ hai thứ khoá được, và cả hai
+đều không phải chuyện ý kiến:
+
+| Nguyên nhân | Nhìn thấy ở đâu | Gỡ thế nào |
+|---|---|---|
+| Ticket đang chặn | Trang *Ticket*, banner đỏ | Sửa ở nguồn rồi chờ QC xác minh; hoặc team lead gỡ chặn từng cái (có ghi lý do) |
+| QC chưa kiểm lần nạp hiện tại | Trang *Phiên bản*, banner đỏ | Chờ — QC chạy mỗi 5 phút. Ép ngay: `gcloud run jobs execute dataops-qc --region=asia-southeast1` |
+
+Còn vi phạm luật mà vẫn ký được — đó là thiết kế. Team lead viết phiếu duyệt,
+và câu đó đi theo bản ký vĩnh viễn, in cả vào file gửi khách.
 
 ---
 
@@ -128,7 +143,7 @@ Ba lý do job tự từ chối làm việc — đều là cố ý:
 | Thông báo | Nghĩa là | Cách xử lý |
 |---|---|---|
 | `job khong gan voi ban ky nao co danh sach lan nap` | Bản ký được tạo trước khi hệ thống biết ghi lại danh sách lần nạp | Chạy lại Sync Job rồi **ký một bản mới**, xin file lại |
-| `cong phat hanh dang khoa (N ngoai le nghiem trong)` | Cổng khoá lại sau lúc xin file | Xử lý hết ngoại lệ nghiêm trọng rồi xin lại |
+| `cong phat hanh dang khoa (N ticket chan: #…)` | Có người mở ticket chặn sau lúc xin file | Sửa ở nguồn rồi chờ QC xác minh, hoặc gỡ chặn ticket, rồi xin lại |
 | Cảnh báo `vuot gioi han … da tach thanh N sheet` | File Excel vượt 1.048.576 dòng một sheet | Không phải lỗi. Muốn một sheet thì xuất CSV hoặc thu hẹp phạm vi |
 
 **Nếu file thiếu bang:** đó là đúng thiết kế. File chỉ chứa những bang trong
@@ -168,9 +183,10 @@ cũ, chứ không phải xoá bản hiện tại.
 3. File đã gửi khách trước đó vẫn tra được: bảng `versions_sent` giữ ai
    nhận bản nào ngày nào.
 
-**Quay lại một ô đã sửa nhầm** thì khác và đơn giản hơn: mở ngoại lệ tương
-ứng, áp số cũ, ghi rõ lý do. `fact_override` tăng `version`, `audit_log` giữ
-cả giá trị trước lẫn sau — không có gì biến mất.
+**Quay lại một ô sai** thì không còn là thao tác trên dashboard nữa: từ P6 ứng
+dụng không sửa số. Mở ticket ghi rõ số đúng phải là bao nhiêu, team Data sửa ở
+BigQuery, QC đọc lại ở lần nạp sau và tự đóng ticket. Mở nhầm thì *Huỷ ticket* —
+`audit_log` giữ cả hai việc, không có gì biến mất.
 
 **Quay lại một bản deploy hỏng** lại là chuyện thứ ba:
 

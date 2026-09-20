@@ -24,43 +24,61 @@ export default function DashboardPage() {
   const crit = s.exceptions.by_severity.critical ?? 0;
   const warn = s.exceptions.by_severity.warning ?? 0;
   const locked = s.gate.locked;
+  const stale = s.gate.qc_stale;
+  // Ba trang thai chu khong phai hai. "Con no" khong phai la khoa: team
+  // lead ky duoc, mien la ky kem phieu duyet co ten.
+  const tone = locked ? "crit" : s.gate.needs_approval ? "warn" : "good";
 
   return (
     <>
-      <div className={`banner ${locked ? "banner-crit" : "banner-good"}`} style={{ marginBottom: 18 }}>
+      <div className={`banner banner-${tone}`} style={{ marginBottom: 18 }}>
         <div>
-          <div className="banner-title" style={{ color: locked ? "var(--crit)" : "var(--good)" }}>
-            {locked ? "Cổng phát hành đang KHOÁ" : "Cổng phát hành sẵn sàng"}
+          <div className="banner-title" style={{ color: `var(--${tone === "warn" ? "warn" : tone})` }}>
+            {locked
+              ? stale
+                ? "QC chưa kiểm lần nạp hiện tại"
+                : "Cổng phát hành đang KHOÁ"
+              : s.gate.needs_approval
+                ? "Ký được, nhưng bản này còn nợ"
+                : "Cổng phát hành sẵn sàng"}
           </div>
           <div className="banner-body">
             {locked
-              ? `Còn ${num(s.gate.blocking)} ngoại lệ nghiêm trọng trên toàn bộ dữ liệu — không ai ký và không ai tải file được.`
-              : "Không còn ngoại lệ nghiêm trọng. Team Lead có thể ký phát hành."}
+              ? stale
+                ? "Danh sách vi phạm đang hiển thị là của lần nạp trước. Ký lúc này bị máy chủ từ chối — QC chạy mỗi 5 phút."
+                : `Còn ${num(s.gate.blocking)} ticket đang chặn — lỗi đã xác nhận bằng bằng chứng, phải sửa ở nguồn chứ không duyệt cho qua được.`
+              : s.gate.needs_approval
+                ? `${num(s.exceptions.open)} vi phạm luật và ${num(s.tickets.open + s.tickets.awaiting_verify)} ticket chưa đóng. Ký được, nhưng phải kèm phiếu duyệt có tên người.`
+                : "Không còn vi phạm luật, không còn ticket. Team Lead có thể ký phát hành."}
           </div>
         </div>
-        <Link className={`btn btn-sm ${locked ? "btn-danger" : "btn-good"}`} href={locked ? "/exceptions" : "/versions"}>
-          {locked ? "Mở hộp thư ngoại lệ" : "Sang trang ký"}
+        <Link
+          className={`btn btn-sm ${locked ? "btn-danger" : "btn-good"}`}
+          href={locked && !stale ? "/tickets" : "/versions"}
+        >
+          {locked && !stale ? "Xem ticket đang chặn" : "Sang trang ký"}
         </Link>
       </div>
 
       <div className="grid-cards" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(156px, 1fr))", marginBottom: 18 }}>
         <Stat label="Dòng trong phạm vi" value={num(s.facts.rows)}
               note={`${s.facts.year_min ?? "—"}–${s.facts.year_max ?? "—"}`} />
-        <Stat label="Ngoại lệ nghiêm trọng" value={num(crit)} tone={crit ? "crit" : "good"}
-              note="trong phạm vi của bạn" />
+        <Stat label="Vi phạm nghiêm trọng" value={num(crit)} tone={crit ? "warn" : "good"}
+              note="nghi ngờ — không tự khoá cổng" />
         <Stat label="Cảnh báo" value={num(warn)} tone={warn ? "warn" : undefined}
-              note="không khoá cổng" />
+              note="trong phạm vi của bạn" />
         <Stat label="Dòng bị gắn cờ" value={num(s.exceptions.flagged_rows)}
-              note={`${num(s.exceptions.resolved)} đã xử lý`} />
-        <Stat label="Số đã sửa tay" value={num(s.overrides)}
-              note={`${num(s.delta.overrides_since)} kể từ bản ký gần nhất`} />
-        <Stat label="Tổng số trẻ" value={num(s.facts.total_number)} note="sau khi áp override" />
+              note={`ở lần nạp ${s.exceptions.run_id ?? "—"}`} />
+        <Stat label="Ticket đang chặn" value={num(s.tickets.blocking)}
+              tone={s.tickets.blocking ? "crit" : "good"}
+              note={`${num(s.tickets.awaiting_verify)} đang chờ QC xác minh`} />
+        <Stat label="Tổng số trẻ" value={num(s.facts.total_number)} note="số của nguồn" />
       </div>
 
       <div className="split" style={{ marginBottom: 18 }}>
         <div className="card">
           <div className="card-head">
-            <h2>Ngoại lệ theo luật</h2>
+            <h2>Vi phạm theo luật</h2>
             <p className="sub">Luật khai báo trong <span className="mono">rules/rules.yaml</span></p>
           </div>
           {s.exceptions.by_rule.length ? (
@@ -115,15 +133,21 @@ export default function DashboardPage() {
                 {s.delta.run_changed
                   ? "Đã có lần nạp mới sau khi ký — số trên màn hình không còn là số đã ký."
                   : "Vẫn đang ở đúng lần nạp đã ký."}{" "}
-                {s.delta.overrides_since > 0
-                  ? `${num(s.delta.overrides_since)} ô đã sửa tay kể từ đó.`
-                  : "Chưa có ô nào sửa tay kể từ đó."}
+                {s.delta.tickets_since > 0
+                  ? `${num(s.delta.tickets_since)} ticket mở thêm kể từ đó.`
+                  : "Không có ticket nào mở thêm kể từ đó."}{" "}
+                {/* Tap vi pham doi ma tong so co the y het — chi van tay
+                    phan biet duoc hai truong hop nay. */}
+                {s.delta.violations_changed
+                  ? "Tập vi phạm đã khác so với lúc ký."
+                  : null}
               </p>
             </>
           ) : (
             <p className="sub">
-              Chưa có bản nào được ký. Xử lý hết ngoại lệ nghiêm trọng rồi sang{" "}
-              <Link href="/versions">trang phiên bản</Link> để ký bản đầu tiên.
+              Chưa có bản nào được ký. Sang{" "}
+              <Link href="/versions">trang phiên bản</Link> để ký bản đầu tiên — còn nợ vẫn ký
+              được, miễn là kèm phiếu duyệt.
             </p>
           )}
         </div>
@@ -132,7 +156,7 @@ export default function DashboardPage() {
       {s.exceptions.by_state.length ? (
         <div className="card">
           <div className="card-head">
-            <h2>Ngoại lệ theo khu vực</h2>
+            <h2>Vi phạm theo khu vực</h2>
             <p className="sub">{gate?.last_signed ? `Bản ký gần nhất: ${gate.last_signed.label}` : "Chưa ký bản nào"}</p>
           </div>
           <ResponsiveContainer width="100%" height={180}>

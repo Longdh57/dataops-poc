@@ -1,10 +1,17 @@
-"""QC Runner — ap bo luat trong rules/rules.yaml len fact_current.
+"""QC Runner — hai viec, chay sau moi lan nap.
 
-Luat nam trong file cau hinh, khong nam trong code: them luat moi chi can
-them mot muc vao YAML roi chay lai job nay.
+1. Ap bo luat trong rules/rules.yaml len fact_current. Luat nam trong file
+   cau hinh chu khong trong code: them luat moi chi can them mot muc vao
+   YAML roi chay lai job nay.
 
-Idempotent: ngoai le dang `open` cua run hien tai bi xoa va sinh lai; ngoai
-le da duoc xu ly (applied/parked/sent_back) KHONG bao gio bi dong toi.
+2. Doi chieu tung ticket dang song voi so THAT trong lan nap vua ve. Day
+   la cho duy nhat ticket duoc dong. Nguoi khong dong duoc ticket — ke ca
+   nguoi da sua — vi "da sua xong roi" la loi hua, con cot nay la bang
+   chung.
+
+Vi pham KHONG co trang thai va thuoc ve dung mot lan nap: moi lan chay,
+toan bo vi pham cua lan nap do bi thay the. Ai cho qua cai gi thi nam o
+`signed_version.approval_note`, khong nam o day.
 """
 
 from __future__ import annotations
@@ -25,6 +32,62 @@ SEVERITIES = {"critical", "warning", "info"}
 
 def log(msg: str) -> None:
     print(f"[qc] {msg}", flush=True)
+
+
+# ------------------------------------------------------------- ticket
+
+def verify_tickets(conn: psycopg.Connection, run_id: str) -> dict[str, int]:
+    """Doi chieu ticket voi so that, roi dong / bat lai / de nguyen.
+
+    Ba ket qua, khong co ket qua thu tu:
+
+    - so that KHOP `expected_value` -> dong, ghi lai dong o lan nap nao.
+    - lech, ma nguoi ta da bao "da sua" -> bat nguoc ve `open` kem so doc
+      duoc. Im lang o day la cach de mot ban sai di ra ngoai.
+    - lech, va chua ai bao da sua -> de nguyen, chi ghi lai lan kiem.
+
+    Dong bien mat khoi nguon cung tinh la chua xac minh duoc: khong doc
+    duoc so thi khong ket luan duoc gi.
+    """
+    with conn.cursor() as cur:
+        cur.execute("""SELECT t.id, t.status, t.expected_value, t.blocking,
+                              t.state, t.gender, t.year, t.name, f.number
+                       FROM ticket t
+                       LEFT JOIN fact_current f
+                         ON f.year = t.year AND f.state = t.state
+                        AND f.gender = t.gender AND f.name = t.name
+                       WHERE t.status IN ('open', 'awaiting_verify')
+                       ORDER BY t.id""")
+        rows = cur.fetchall()
+
+    dem = {"dong": 0, "bat_lai": 0, "con_mo": 0}
+    with conn.cursor() as cur:
+        for tid, status, expected, blocking, state, gender, year, name, number in rows:
+            quan_sat = None if number is None else str(number)
+            khoa = f"{state}/{gender}/{year}/{name}"
+
+            if quan_sat is not None and quan_sat == expected:
+                cur.execute(
+                    """UPDATE ticket SET status='closed', closed_run_id=%s, closed_at=now(),
+                              last_checked_run_id=%s, last_checked_at=now(), last_observed=%s
+                       WHERE id=%s""", (run_id, run_id, quan_sat, tid))
+                dem["dong"] += 1
+                log(f"  ticket #{tid} {khoa}: nguon da la {expected} -> DONG")
+            elif status == "awaiting_verify":
+                cur.execute(
+                    """UPDATE ticket SET status='open', last_checked_run_id=%s,
+                              last_checked_at=now(), last_observed=%s
+                       WHERE id=%s""", (run_id, quan_sat, tid))
+                dem["bat_lai"] += 1
+                log(f"  ticket #{tid} {khoa}: bao da sua nhung doc duoc "
+                    f"{quan_sat or '(khong con dong)'}, can {expected} -> BAT LAI")
+            else:
+                cur.execute(
+                    """UPDATE ticket SET last_checked_run_id=%s, last_checked_at=now(),
+                              last_observed=%s WHERE id=%s""", (run_id, quan_sat, tid))
+                dem["con_mo"] += 1
+    conn.commit()
+    return dem
 
 
 def validate(rules: list[dict]) -> list[str]:
@@ -77,47 +140,50 @@ def main() -> int:
 
     config = yaml.safe_load(RULES_PATH.read_text())
     rules = config["rules"]
+    # Ghi lai de ban ky cheo duoc: "team lead duyet duoi bo luat version
+    # may". Thieu no thi mot quyet dinh cu khong tai hien duoc, vi file
+    # luat la thu bi sua thuong xuyen nhat trong ca he thong.
+    rules_version = config.get("version")
 
     if loi := validate(rules):
         log(f"file luat co {len(loi)} loi — KHONG chay luat nao:")
         for m in loi:
             log(f"  - {m}")
         return 1
-    log(f"nap {len(rules)} luat tu {RULES_PATH}")
+    log(f"nap {len(rules)} luat (version {rules_version}) tu {RULES_PATH}")
 
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT last_run_id FROM sync_state WHERE id = 1")
+            cur.execute("SELECT last_run_id, qc_run_id FROM sync_state WHERE id = 1")
             row = cur.fetchone()
             if not row or not row[0]:
                 log("chua co lan dong bo nao — khong co gi de kiem")
                 return 0
-            run_id = row[0]
+            run_id, da_kiem = row
         # Bo qua neu run nay da duoc kiem roi — cung tinh than voi Sync Job:
         # khong lam viec thua. Dat FORCE_QC=1 de ep chay lai.
-        if os.getenv("FORCE_QC") != "1":
-            with conn.cursor() as cur:
-                cur.execute("SELECT count(*) FROM qc_exception WHERE run_id = %s", (run_id,))
-                if cur.fetchone()[0] > 0:
-                    log(f"run {run_id} da duoc kiem — bo qua")
-                    return 0
+        if os.getenv("FORCE_QC") != "1" and da_kiem == run_id:
+            log(f"run {run_id} da duoc kiem — bo qua")
+            return 0
 
         log(f"kiem tren run {run_id}")
 
         totals: dict[str, int] = {}
         with conn.cursor() as cur:
-            # Chi xoa ngoai le CHUA duoc xu ly. Nguoi dung da quyet dinh
-            # thi quyet dinh do phai con nguyen.
-            cur.execute("DELETE FROM qc_exception WHERE run_id = %s AND status = 'open'", (run_id,))
-            log(f"xoa {cur.rowcount:,} ngoai le open cu")
+            # Thay the TOAN BO vi pham cua lan nap nay. Vi pham khong co
+            # trang thai nen khong co gi de giu lai: danh sach phai la anh
+            # chup cua du lieu dang co, khong phai cua lan chay truoc.
+            cur.execute("DELETE FROM qc_exception WHERE run_id = %s", (run_id,))
+            if cur.rowcount:
+                log(f"thay the {cur.rowcount:,} vi pham cu cua chinh lan nap nay")
 
             for rule in rules:
                 where, scope_params = scope_filter(rule)
                 cur.execute(
                     f"""
                     INSERT INTO qc_exception
-                        (run_id, rule_id, severity, year, state, gender, name, message, observed, status)
-                    SELECT %s, %s, %s, x.year, x.state, x.gender, x.name, %s, x.observed, 'open'
+                        (run_id, rule_id, severity, year, state, gender, name, message, observed)
+                    SELECT %s, %s, %s, x.year, x.state, x.gender, x.name, %s, x.observed
                     FROM ({rule['sql']}) x
                     {where}
                     """,
@@ -128,14 +194,32 @@ def main() -> int:
                 log(f"  {rule['id']:26} {rule['severity']:9} {cur.rowcount:>6,}{pham_vi}")
         conn.commit()
 
+        # Ticket sau luat: ca hai deu doc fact_current cua cung lan nap,
+        # nen ket qua nhat quan voi nhau.
+        log("doi chieu ticket voi so that:")
+        tk = verify_tickets(conn, run_id)
+        log(f"  dong {tk['dong']} · bat lai {tk['bat_lai']} · con mo {tk['con_mo']}")
+
+        with conn.cursor() as cur:
+            cur.execute("""UPDATE sync_state
+                           SET qc_run_id=%s, qc_checked_at=now(), rules_version=%s
+                           WHERE id=1""", (run_id, rules_version))
+        conn.commit()
+
         with conn.cursor() as cur:
             cur.execute("""SELECT severity, count(*) FROM qc_exception
-                           WHERE status = 'open' GROUP BY severity ORDER BY severity""")
+                           WHERE run_id = %s GROUP BY severity ORDER BY severity""", (run_id,))
             summary = dict(cur.fetchall())
+            cur.execute("""SELECT count(*) FROM ticket
+                           WHERE status IN ('open','awaiting_verify') AND blocking""")
+            chan = cur.fetchone()[0]
 
-    blocking = summary.get("critical", 0)
-    log(f"con mo: {summary}")
-    log(f"cong phat hanh: {'KHOA' if blocking else 'SAN SANG'} ({blocking} critical)")
+    log(f"vi pham lan nap nay: {summary}")
+    # Vi pham luat KHONG khoa cong nua — chung la nghi ngo cua may, va
+    # team lead duyet bang phieu duyet co ten. Chi ticket chan moi khoa.
+    log(f"cong phat hanh: {'KHOA' if chan else 'SAN SANG'} ({chan} ticket dang chan)")
+    if summary:
+        log("  — con vi pham luat: ky duoc, nhung phai co phieu duyet")
     return 0
 
 

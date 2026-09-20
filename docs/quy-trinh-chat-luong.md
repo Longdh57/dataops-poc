@@ -1,8 +1,9 @@
 # Quy trình chất lượng dữ liệu
 
-Tài liệu thiết kế, không phải mô tả code hiện tại: nó nói dữ liệu đi từ team
-Data tới tay khách qua những cửa nào và ai ký tên vào đâu. Phần code còn lệch
-nằm ở mục cuối, [Khoảng cách với code hiện tại](#khoảng-cách-với-code-hiện-tại).
+Dữ liệu đi từ team Data tới tay khách qua những cửa nào, và ai ký tên vào đâu.
+Quy trình này **đã được cài đặt** — mục cuối,
+[Đã cài đặt ở đâu](#đã-cài-đặt-ở-đâu), trỏ tới đúng chỗ trong code, kèm những
+quyết định phát sinh lúc làm.
 
 Mục tiêu, nhắc lại cho rõ: **sale bán được dữ liệu, dữ liệu đó chính xác, và
 mỗi bản gửi đi đều có đúng một người đứng tên.**
@@ -191,19 +192,46 @@ ngoại lệ và mở cổng phát hành trong khi dữ liệu vẫn sai.
 
 ---
 
-## Khoảng cách với code hiện tại
+## Đã cài đặt ở đâu
 
-Code **chưa** đổi theo tài liệu này. Bảng dưới là phần lệch, xếp theo mức nguy hiểm.
+| Việc | Ở đâu |
+|---|---|
+| Bỏ hẳn `fact_override`; API và Export Job không còn sửa số | [migration c3a71e5b9042](../apps/api/alembic/versions/c3a71e5b9042_p6_quy_trinh_chat_luong.py), [export/main.py](../jobs/export/main.py) |
+| Vi phạm mất trạng thái, thuộc về đúng một lần nạp | [models.py](../apps/api/app/models.py), [qc/main.py](../jobs/qc/main.py) |
+| Bảng `ticket` + điều kiện nghiệm thu | [models.py](../apps/api/app/models.py), `POST/GET/PATCH /api/tickets` |
+| QC đối chiếu ticket, đóng / bật lại | `verify_tickets` trong [qc/main.py](../jobs/qc/main.py) |
+| Phiếu duyệt bắt buộc khi còn nợ | `POST /api/release` trong [main.py](../apps/api/app/main.py) |
+| Bản ký ghi vân tay, số lượng, version luật, ticket | `violations_of` và `data_checksum` trong [main.py](../apps/api/app/main.py) |
+| File gửi khách mang dấu bản ký | `stamp_lines` trong [export/main.py](../jobs/export/main.py) |
 
-| # | Hiện tại | Mục tiêu | Ở đâu |
-|---|---|---|---|
-| 1 | `fact_override` không gắn `run_id` và không hết hạn — team Data sửa đúng ở nguồn thì override cũ vẫn đè lên, file bán ra sai mà không ai biết | bỏ hẳn override | [models.py:56](../apps/api/app/models.py:56), [export/main.py:112](../jobs/export/main.py:112) |
-| 2 | `signed_version.checksum` có cột nhưng **chưa bao giờ được ghi** | vân tay + số lượng vi phạm + version luật | [models.py:147](../apps/api/app/models.py:147) |
-| 3 | Không có khái niệm ticket; `send_back` chỉ đổi status và ghi audit, **không gửi đi đâu cả** | ticket có điều kiện nghiệm thu, QC kiểm lại mỗi lần nạp | [main.py:361](../apps/api/app/main.py:361) |
-| 4 | `park` / `send_back` làm giảm bộ đếm cổng → mở cổng dù dữ liệu vẫn sai | phiếu duyệt có tên người | [main.py:384](../apps/api/app/main.py:384) |
-| 5 | Ký bị chặn cứng 409 khi còn `critical` | cho ký, bắt buộc kèm phiếu duyệt | [main.py:384](../apps/api/app/main.py:384) |
-| 6 | `/api/exceptions` lọc theo `status`, không theo `run_id` → hộp thư trộn lẫn nhiều lần nạp | bảng vi phạm của đúng lần nạp hiện tại | [main.py:249](../apps/api/app/main.py:249) |
-| 7 | Luật QC query thẳng `fact_current`, không biết tới override → lỗi đã "sửa" lặp lại mỗi lần nạp | hết vấn đề sau khi bỏ override | [rules.yaml](../rules/rules.yaml) |
+Test giữ cho từng điều kiện ở trên:
+[test_ticket_and_gate.py](../apps/api/tests/test_ticket_and_gate.py) (12 test — ticket,
+cổng, phiếu duyệt, và một test giữ cho `/api/facts` luôn trả về số của nguồn) và
+[jobs/tests/test_export.py](../jobs/tests/test_export.py) (dấu bản ký, sheet bìa).
 
-Thứ tự đề xuất: **1 → 2 → 3 → 4, 5 → 6 → 7**. Mục 1 là mục duy nhất có thể khiến
-sale bán ra số sai mà không ai phát hiện được.
+## Bốn quyết định phát sinh lúc cài đặt
+
+**1. Thêm một khoá cứng thứ hai: QC chưa kiểm lần nạp hiện tại thì không ký được.**
+Không có nó thì có một khe hở thật: nạp mới về, QC chưa chạy (nó chạy mỗi 5 phút),
+màn hình vẫn hiện vi phạm của lần nạp trước, và team lead ký một thứ họ chưa nhìn
+thấy. Phiếu duyệt lúc đó nói về dữ liệu không còn tồn tại.
+
+**2. Vân tay dữ liệu dùng tổng hash, không phải hash toàn bộ nội dung.** Nối 1,2
+triệu dòng thành một chuỗi rồi băm sẽ ngốn hàng chục MB trên `db-f1-micro`. Tổng
+của hash từng dòng không phụ thuộc thứ tự và tốn bộ nhớ hằng số. Đổi lại nó **chỉ
+phát hiện thay đổi, không chống giả mạo** — đúng bằng mục đích cần dùng.
+
+**3. Dấu bản ký ra file riêng với CSV, sheet bìa với xlsx.** Một dòng chú thích ở
+đầu CSV làm Excel đọc lệch cột và làm mọi parser phía khách hỏng. Nên CSV đi kèm
+`<tên>.ban-ky.txt`, còn xlsx thì có sheet *Ban ky* đứng trước dữ liệu.
+
+**4. Bảng vẫn tên `qc_exception`.** Nội dung đã thành "vi phạm của một lần nạp"
+nhưng đổi tên bảng chỉ để cho đẹp thì phải sửa theo cả runbook, demo và mọi câu
+SQL người vận hành đang có sẵn. Không đáng.
+
+## Còn lại
+
+- Bộ luật chưa tự lớn lên: mỗi ticket kiểu "QC không bắt được" **nên** đẻ ra một
+  luật mới trong `rules.yaml`, nhưng hiện chưa có gì nhắc việc đó.
+- Ticket vẫn phải báo cho team Data bằng tay — hệ thống không gửi đi đâu, nó chỉ
+  đảm bảo ticket không đóng được nếu nguồn chưa thật sự sửa.

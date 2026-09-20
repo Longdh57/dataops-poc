@@ -23,7 +23,7 @@ ban thiet ke day du.
 docker compose up --build
 ```
 
-http://localhost:3000 — dashboard, luoi du lieu, hop thu ngoai le.
+http://localhost:3000 — dashboard, luoi du lieu, vi pham QC, ticket.
 Doi package.json thi phai dung `docker compose up -d --build --renew-anon-volumes web`,
 vi node_modules nam trong anonymous volume.
 
@@ -194,45 +194,47 @@ Kiem chung tren ha tang that:
 | analyst.tx | TX | `/api/facts` | chi TX |
 | analyst.tx | TX | `/api/facts?state=CA` | **0 dong** |
 | analyst.ca | CA | `/api/facts` | chi CA |
-| sale | CA+TX | `/api/exceptions` | 95 = 44 CA + 51 TX |
+| sale | CA+TX | `/api/exceptions` | 84 = 37 CA + 47 TX |
 
 Tra ve rong chu khong phai 403, de khong ro ri thong tin bang nao ton tai.
 
-### Khoa lac quan
+### ~~Khoa lac quan~~ — go o P6
 
-Moi dong co `version`. Sua voi `expected_version` cu thi nhan 409 kem diff:
+P3 co khoa lac quan tren `fact_override`: hai phien sua cung mot o thi phien
+sau nhan 409 kem diff. P6 bo han viec sua so, nen khong con hai phien nao
+tranh nhau mot o de ma khoa.
 
-```json
-{
-  "loi": "co nguoi khac vua sua dong nay",
-  "expected_version": 0, "current_version": 1,
-  "gia_tri_goc": 127, "gia_tri_hien_tai": 777, "gia_tri_ban_muon_ghi": 111
-}
-```
-
-Gia tri KHONG bi ghi de — nguoi dung tu quyet dinh tai lai hay ghi de co
-chu dich.
+Cho tranh chap chuyen sang bang `ticket`, va duoc giai bang mot rang buoc
+o tang database thay vi mot cot `version`: partial unique index
+`uq_ticket_open_key` chi cho DUNG MOT ticket dang song tren moi o. Nguoi thu
+hai nhan 409 kem id cua ticket da co — khong co cach nao de hai dieu kien
+nghiem thu mau thuan cung ton tai.
 
 ### Cong phat hanh
 
-Con ngoai le `critical` dang mo thi khong ai ky va khong ai tai file duoc:
+Tu P6, vi pham luat KHONG con khoa cong — xem muc [Quy trinh chat luong
+(P6)](#quy-trinh-chat-luong-p6). Chi hai thu khoa cung:
 
 | Thao tac | Ket qua |
 |---|---|
-| Team Lead ky khi cong khoa | 409 + so ngoai le con lai |
+| Ky khi con ticket dang chan | 409 + danh sach ticket |
+| Ky khi QC chua kiem lan nap hien tai | 409 — danh sach vi pham dang hien la cua lan truoc |
+| Ky khi con no ma khong co phieu duyet | 422 |
 | Analyst thu ky | 403 — sai vai tro |
-| Tai file khi cong khoa | 409 |
+| Tai file khi con ticket chan | 409 |
 
 ### Endpoint
 
 | Method | Duong dan | Y nghia |
 |---|---|---|
 | GET | `/api/me` | danh tinh, vai tro, pham vi |
-| GET | `/api/facts` | loc, sap xep (allowlist), phan trang keyset, merge override |
-| GET | `/api/exceptions` | hop thu ngoai le trong pham vi |
-| PATCH | `/api/exceptions/{id}` | apply / park / send_back — mot transaction |
-| GET | `/api/gate` | trang thai cong phat hanh |
-| POST | `/api/release` | ky ban so lieu (team_lead) |
+| GET | `/api/facts` | loc, sap xep (allowlist), phan trang keyset; so LUON la so nguon |
+| GET | `/api/exceptions` | vi pham cua lan nap hien tai, trong pham vi |
+| POST | `/api/tickets` | bao loi cho team Data — bat buoc co `expected_value` |
+| GET | `/api/tickets` | ticket trong pham vi |
+| PATCH | `/api/tickets/{id}` | mark_fixed / set_blocking / cancel. KHONG co close |
+| GET | `/api/gate` | mon no + hai thu khoa cung |
+| POST | `/api/release` | ky ban so lieu (team_lead), kem phieu duyet |
 | POST | `/api/exports` | 202 + job_id |
 
 ### Bo luat QC
@@ -244,9 +246,12 @@ Nguong dat tu profile du lieu that:
 |---|---|---|
 | thi_phan_khong_tron_100 | critical | 0 — kiem tra toan ven |
 | duoi_nguong_kiem_duyet | critical | 0 — SSA khong cong bo duoi 5 |
-| tang_dot_bien | critical | 23 |
+| tang_dot_bien | critical | 20 |
 | ten_pho_bien_bien_mat | critical | 1 |
-| bien_dong_bat_thuong | warning | 405 |
+| bien_dong_bat_thuong | warning | 361 |
+
+Tu P6, `severity` chi con de xep thu tu doc va de loc — no khong quyet dinh
+duoc gi nua. Chi ticket moi chan phat hanh.
 
 ```bash
 gcloud run jobs execute dataops-qc --region=asia-southeast1
@@ -278,9 +283,10 @@ duy nhat.
 
 | Trang | Lam gi |
 |---|---|
-| `/` | Dashboard: o chi so, chenh lech so voi ban da ky, ngoai le theo luat va theo khu vuc, trang thai cong |
+| `/` | Dashboard: o chi so, chenh lech so voi ban da ky, vi pham theo luat va theo khu vuc, trang thai cong |
 | `/data` | Luoi 1,2 trieu dong bang AG Grid, cuon lien tuc |
-| `/exceptions` | Hop thu ngoai le + panel dieu tra ben phai |
+| `/exceptions` | Vi pham cua lan nap hien tai + panel dieu tra ben phai |
+| `/tickets` | Ticket gui team Data — P6 |
 | `/versions` | Ban da ky: ai ky, luc nao, da gui cho khach nao |
 | `/requests` | Sale xin file, theo doi trang thai, tai ve khi xong |
 
@@ -305,13 +311,16 @@ Cai gia phai noi ro voi nguoi dung, va giao dien co ghi: **bam tieu de cot
 chi sap xep trong so dong da tai**. Muon sap xep toan bo thi doi o "Sap
 xep toan bo" — cai do chay o server va nap lai tu dau.
 
-### Khoa lac quan nhin tu giao dien
+### Panel dieu tra nhin tu giao dien
 
-Panel dieu tra gui kem `expected_version`. Nhan 409 thi KHONG ghi de, ma
-hien ba con so — so goc, so tren may chu, so ban muon ghi — cung hai lua
-chon: *Tai lai dong* hoac *Ghi de co chu dich*. Ghi de la gui lai voi
-`expected_version` moi, tuc la nguoi dung chu dong chap nhan de len ban
-cua dong nghiep.
+Tu P6 panel chi de DOC va de quyet dinh. No dat ban da ky gan nhat canh lan
+nap hien tai — cau hoi that su la "so nay co that su doi khong", chu khong
+phai "sua thanh bao nhieu". O nhap duy nhat con lai la *So dung phai la*, va
+no khong ghi vao du lieu: no thanh dieu kien nghiem thu cua mot ticket.
+
+O nao da co ticket thi panel hien nguyen trang thai ticket do thay cho form,
+kem hai viec lam duoc: *Nguon da sua — nho QC xac minh*, va *Bao nham — huy
+ticket*. Khong co nut dong.
 
 ### Hai nut de bam nham
 
@@ -334,28 +343,29 @@ dang go do dang trong panel dieu tra.
 |---|---|---|
 | GET | `/api/summary` | toan bo so lieu dashboard trong mot lan goi |
 | GET | `/api/options` | gia tri cho thanh loc — cung ap pham vi |
-| GET | `/api/exceptions/{id}` | chi tiet cho panel dieu tra, kem `expected_version` |
+| GET | `/api/exceptions/{id}` | chi tiet cho panel dieu tra, kem ticket cua o do |
 | GET | `/api/versions` | ban da ky + da gui cho ai |
 | POST | `/api/versions/{id}/sent` | ghi nhan da gui cho khach |
 | GET | `/api/exports` | job cua chinh minh |
-| GET | `/api/exports/{id}/download` | signed URL 15 phut, chan khi cong khoa |
+| GET | `/api/exports/{id}/download` | signed URL 15 phut, chan khi con ticket chan |
 | POST | `/api/rebuild` | kich hoat Sync Job (team_lead tro len) |
 
 ### Kich ban da chay tron
 
 Chay tren docker compose local, du lieu that 1.222.947 dong:
 
-1. Dashboard bao 21 ngoai le nghiem trong, cong **KHOA**
-2. Mo mot ngoai le -> panel hien so cua lan nap canh ban da ky
-3. Sua so -> trong luc do nguoi khac ghi de o duoi database -> **409** kem
-   diff, so cua minh khong bi ghi
-4. Bam *Ghi de co chu dich* -> ghi thanh cong, `fact_override` len ban 2,
-   ngoai le chuyen `applied`, audit log ghi ca truoc lan sau
-5. Xu ly not 20 ngoai le con lai -> cong chuyen sang **SAN SANG**
-6. Team Lead ky "Ban thang 9 2026 - dot 1" -> vao `signed_version`
+1. Dashboard bao 382 vi pham (21 nghiem trong), cong **cho ky kem phieu duyet**
+2. Mo mot vi pham -> panel hien so cua lan nap canh ban da ky
+3. Mo ticket voi `expected_value` -> cong chuyen **KHOA**, badge tab do
+4. Bam *Da sua nguon* -> ticket sang `awaiting_verify`, van chan
+5. Chay lai QC khi nguon chua doi that -> ticket **bat nguoc ve `open`** kem
+   so doc duoc
+6. Go chan ticket (team lead, co ly do) -> ky kem phieu duyet -> `signed_version`
+   ghi van tay, so vi pham theo luat, version luat, ticket chua dong
 7. Doi danh tinh sang sale -> xin file -> job vao hang doi `pending`
 
-Buoc cuoi (file tai ve duoc) can Export Job chay that — do la P5.
+Buoc 1–6 la kich ban P6, da chay tron tren docker compose local. Buoc cuoi
+(file tai ve duoc) can Export Job chay that.
 
 ### Con thieu so voi plan
 
@@ -404,9 +414,9 @@ thong bao noi ro phai ky lai — thay vi lang le xuat sai.
 - **Pham vi**: sale pham vi CA+TX xin file thi nhan dung 170.682 dong cua
   CA va TX. Pham vi duoc chot luc XIN FILE, khong phai luc job chay — doi
   pham vi cua ho hom sau khong lam doi file da phat.
-- **Thi phan tinh lai**: sua mot o thi thi phan ca nhom doi. Khong tinh lai
-  thi khach cong cot do se khong ra 100%. Chi tinh lai cho nhom co override;
-  nhom khong ai dong toi giu nguyen so cua nguon.
+- **Thi phan giu nguyen cua nguon**: tu P6 khong ai sua so nua, nen khong
+  con phai tinh lai thi phan — con so cua BigQuery da dung san. Day la mot
+  nhanh code phuc tap bien mat theo bang `fact_override`.
 - **Gioi han Excel**: 1.048.576 dong mot sheet. Vuot thi tach sheet va ghi
   canh bao vao `export_job.warning`, KHONG lang le cat bot dong.
 
@@ -477,19 +487,63 @@ la hong:
   loi thi lam gi, quay lai phien ban truoc, them nguoi dung, dung lai tu
   project trong
 - [docs/demo.md](docs/demo.md) — kich ban trinh bay 5 phut
-- [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) — luong
-  MUC TIEU cua chat luong du lieu: loi di vao tu dau, ai duyet, ban ky
-  ghi gi, kem bang doi chieu voi code hien tai. Chua implement.
+- [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) — quy trinh
+  chat luong: loi di vao tu dau, ai duyet, ban ky ghi gi, va bon quyet dinh
+  phat sinh luc cai dat. DOC TRUOC khi sua QC, ticket hay cho ky.
 
 ### Test
 
 ```bash
-cd apps/api && pytest tests -q   # 28 test: phan quyen, khoa lac quan, cong, export
-pytest jobs/tests -q             # 12 test: logic export va bo luat, khong can BigQuery
+cd apps/api && pytest tests -q   # 38 test: phan quyen, ticket, cong, phieu duyet, export
+pytest jobs/tests -q             # 16 test: logic export va bo luat, khong can BigQuery
 ```
 
-`jobs/tests` chay duoc ma khong can cloud: phan de sai nhat cua Export Job
-la ap override, tinh lai thi phan va cat sheet — ca ba deu la ham thuan.
+`jobs/tests` chay duoc ma khong can cloud: phan de sai nhat cua Export Job la
+dau ban ky, cat sheet va dinh dang dong — deu la ham thuan.
+
+Hai test dang gia nhat, vi chung giu dung cai de mat nhat khi sua code sau nay:
+
+- `test_nguoi_khong_dong_duoc_ticket` — khong co duong nao dong ticket bang tay.
+- `test_facts_tra_ve_so_cua_nguon_chu_khong_sua` — khong co duong nao lam so
+  doc ra khac so trong `fact_current`.
+
+## Quy trinh chat luong (P6)
+
+Quy trinh day du o [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md).
+Ba thay doi lon so voi P3–P5:
+
+**1. Ung dung khong sua so nua.** Bang `fact_override` bi bo han, cung voi
+`apply` / `park` / `send_back`. Truoc kia so sua tay chi song trong Postgres
+va duoc ap len luc xuat file — nghia la file gui khach va BigQuery co the
+lech nhau ma khong ai phat hien, va override khong bao gio het han nen no
+con de len ca so ma team Data da sua DUNG o lan nap sau. Bay gio so sai thi
+mo ticket, team Data sua o nguon.
+
+**2. Ticket mang dieu kien nghiem thu, va chi QC moi dong duoc.** Moi ticket
+ghi `expected_value`; sau moi lan nap, QC doc so that len va doi chieu. Khop
+thi dong, lech ma nguoi ta da bao "da sua" thi bat nguoc ve `open` kem so doc
+duoc. Khong co endpoint nao dong ticket bang tay — do la diem quyet dinh cua
+ca quy trinh, vi "da sua roi" la loi hua con cot nay la bang chung.
+
+**3. Vi pham luat khong khoa cong; phieu duyet thay cho viec do.** Vi pham la
+nghi ngo cua may: no bo sot duoc (10 tre nhap thanh 20 thi khong luat nao bat)
+va bao nham duoc. Nen team lead ky duoc du con vi pham, mien la viet phieu
+duyet — va phieu do di theo ban ky vinh vien, in ca vao file gui khach. Cai
+khoa cung chi con ticket dang chan, va truong hop QC chua kiem lan nap hien
+tai.
+
+Ban ky tu day ghi them: van tay du lieu (`checksum`), so o vi pham theo tung
+luat, van tay tap vi pham, version cua `rules.yaml`, va danh sach ticket chua
+dong. Van tay du lieu la de bat truong hop team Data sua so TAI CHO duoi cung
+mot `run_id` — luc do nhan van the ma so da khac.
+
+```bash
+# Migration
+cd apps/api && alembic upgrade head    # c3a71e5b9042
+
+# Sinh lai vi pham + doi chieu ticket
+FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
+```
 
 ## Terraform
 
@@ -548,10 +602,8 @@ co Organization -> IAP tu cap OAuth client -> bo duoc `public_access` han.
   cung domain. `gcloud run deploy` cho revision moi 100% traffic ngay, nen
   buoc duyet tay o `deploy-prod` khong con y nghia — code da live tu truoc.
   Sua bang `--no-traffic --tag=staging` khi can tach that.
-- Quy trinh chat luong KHONG khep vong. Nang nhat: `apply` ghi vao
-  `fact_override` — chi song o Postgres, khong gan `run_id`, khong bao gio
-  het han. Team Data sua dung so o nguon thi override cu VAN de len, file
-  ban ra sai ma khong ai phat hien. Kem theo: `send_back` khong gui di dau
-  ca, `park`/`send_back` van mo cong phat hanh, `signed_version.checksum`
-  co cot nhung chua bao gio duoc ghi. Luong thay the va thu tu go o
-  [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md).
+- ~~Quy trinh chat luong khong khep vong~~ — P6 da go: bo `fact_override`,
+  them ticket co dieu kien nghiem thu, ban ky ghi ro mon no. Con lai hai
+  mon nho, ghi o cuoi [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md):
+  bo luat khong tu lon len sau moi ticket kieu "QC khong bat duoc", va ticket
+  van phai bao cho team Data bang tay.

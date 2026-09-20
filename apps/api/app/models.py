@@ -4,13 +4,17 @@ Ghi chu thiet ke quan trong: fact_current bi DOI TEN moi lan sync
 (staging -> current), nen id cua no KHONG on dinh. Moi bang tham chieu
 toi mot dong fact phai dung KHOA TU NHIEN (year, state, gender, name),
 khong duoc dung khoa ngoai toi fact_current.id.
+
+Nguyen tac thu hai, tu docs/quy-trinh-chat-luong.md: ung dung nay KHONG
+sua so. Khong co bang nao giu "so da sua tay" nua. Loi di ra ngoai bang
+`ticket` de team Data sua o nguon, va QC xac minh lai o lan nap ke tiep.
 """
 
 from datetime import datetime
 
 from sqlalchemy import (
     BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer,
-    JSON, String, Text, UniqueConstraint, func,
+    JSON, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy import desc as sa_text_desc
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -53,34 +57,13 @@ class FactCurrent(Base):
     )
 
 
-class FactOverride(Base):
-    """So da duoc nguoi dung sua tay. Merge de len fact_current luc doc."""
-    __tablename__ = "fact_override"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    # khoa tu nhien — KHONG dung FK toi fact_current.id
-    year: Mapped[int] = mapped_column(Integer, nullable=False)
-    state: Mapped[str] = mapped_column(String(8), nullable=False)
-    gender: Mapped[str] = mapped_column(String(1), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-
-    field: Mapped[str] = mapped_column(String(64), nullable=False)
-    old_value: Mapped[str | None] = mapped_column(Text)
-    new_value: Mapped[str] = mapped_column(Text, nullable=False)
-    reason: Mapped[str] = mapped_column(Text, nullable=False)
-
-    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    created_by: Mapped[str] = mapped_column(String(320), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        UniqueConstraint("year", "state", "gender", "name", "field", name="uq_override_key"),
-        Index("ix_override_key", "year", "state", "gender", "name"),
-    )
-
-
 class QcException(Base):
-    """Ngoai le do rule engine sinh ra. Vong doi: open -> applied/parked/sent_back."""
+    """Mot vi pham luat, thuoc ve DUNG MOT lan nap.
+
+    Khong con cot `status`: quyet dinh khong nam o day nua. QC quet lai
+    toan bo luat sau moi lan nap va thay the nguyen bo vi pham cua lan nap
+    do; ai cho qua cai gi thi nam o `signed_version.approval_note`.
+    """
     __tablename__ = "qc_exception"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -95,16 +78,72 @@ class QcException(Base):
 
     message: Mapped[str] = mapped_column(Text, nullable=False)
     observed: Mapped[dict | None] = mapped_column(JSON)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    resolved_by: Mapped[str | None] = mapped_column(String(320))
 
     __table_args__ = (
-        Index("ix_qc_status_severity", "status", "severity"),
-        Index("ix_qc_run", "run_id"),
+        Index("ix_qc_run_severity", "run_id", "severity"),
         Index("ix_qc_key", "year", "state", "gender", "name"),
+    )
+
+
+class Ticket(Base):
+    """Mot loi da duoc xac nhan, giao cho team Data sua o NGUON.
+
+    Khac voi vi pham QC o hai diem quyet dinh:
+
+    - No song xuyen qua nhieu lan nap, vi loi chi het khi nguon that su doi.
+    - No mang `expected_value` — dieu kien nghiem thu KIEM DUOC BANG MAY.
+      Thieu no thi "da sua xong roi" chi la loi hua, va QC khong co cach
+      nao doi chieu.
+
+    Vong doi: open -> awaiting_verify (team Data bao da sua) -> closed, va
+    chi QC moi duoc dong. Lech so thi bat nguoc ve open kem so doc duoc.
+    """
+    __tablename__ = "ticket"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+
+    # khoa tu nhien — KHONG dung FK toi fact_current.id
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(8), nullable=False)
+    gender: Mapped[str] = mapped_column(String(1), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    field: Mapped[str] = mapped_column(String(64), nullable=False, default="number")
+
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    expected_value: Mapped[str] = mapped_column(Text, nullable=False)
+    observed_at_open: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[str | None] = mapped_column(Text)
+    # Quyet dinh NGAY luc tao: khong phan loai thi hoac ban ra du lieu co
+    # loi da biet, hoac tac vinh vien vi mot ticket nho.
+    blocking: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # rule_id neu ticket sinh ra tu mot vi pham QC; rong = nguoi tu phat hien
+    from_rule_id: Mapped[str | None] = mapped_column(String(64))
+
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+
+    created_by: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    marked_fixed_by: Mapped[str | None] = mapped_column(String(320))
+    marked_fixed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Dau vet cua lan QC kiem gan nhat — de nguoi doc biet vi sao ticket
+    # van con mo ma khong phai mo lai lich su.
+    last_checked_run_id: Mapped[str | None] = mapped_column(String(64))
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_observed: Mapped[str | None] = mapped_column(Text)
+
+    closed_run_id: Mapped[str | None] = mapped_column(String(64))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        # Mot o chi duoc co MOT ticket dang song. Hai ticket cung o thi
+        # khong ai biet cai nao la dieu kien nghiem thu that.
+        Index("uq_ticket_open_key", "year", "state", "gender", "name", "field",
+              unique=True,
+              postgresql_where=text("status IN ('open', 'awaiting_verify')")),
+        Index("ix_ticket_status", "status", "blocking"),
     )
 
 
@@ -132,7 +171,11 @@ class AppRole(Base):
 
 
 class SignedVersion(Base):
-    """Ban so lieu da ky — dong bang vinh vien."""
+    """Ban so lieu da ky — dong bang vinh vien.
+
+    Nhan thoi thi rong. Mot ban ky phai tu tra loi duoc: no gom du lieu
+    nao, luc ky con no nhung gi, va ai dung ten cho mon no do.
+    """
     __tablename__ = "signed_version"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -144,7 +187,24 @@ class SignedVersion(Base):
     source_run_ids: Mapped[list | None] = mapped_column(JSON)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
     row_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    # Van tay DU LIEU cua ban ky. Team Data sua so tai cho duoi cung mot
+    # run_id la chuyen binh thuong — khi do nhan van the ma so da khac.
+    # Chi cot nay phat hien duoc.
     checksum: Mapped[str | None] = mapped_column(String(64))
+
+    # --- mon no duoc ghi ra, thay vi bi giau di ---
+    # {rule_id: so o vi pham} luc ky
+    violations: Mapped[dict | None] = mapped_column(JSON)
+    # van tay tap khoa vi pham — phan biet "van 3 o cu" voi "3 o khac"
+    violations_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    # version cua rules.yaml, de tai hien duoc da duyet duoi bo luat nao
+    rules_version: Mapped[int | None] = mapped_column(Integer)
+    # ticket chua dong tai thoi diem ky
+    open_tickets: Mapped[list | None] = mapped_column(JSON)
+    # Phieu duyet: vi sao van ky du con vi pham. Bat buoc khi co no.
+    approval_note: Mapped[str | None] = mapped_column(Text)
+
     signed_by: Mapped[str] = mapped_column(String(320), nullable=False)
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -188,6 +248,9 @@ class ExportJob(Base):
     # Canh bao khong lam job that bai — vi du vuot gioi han dong cua Excel.
     warning: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
+    # File dau ban ky di kem: ky kem vi pham gi, ticket nao chua dong.
+    # Tach rieng vi CSV khong cho nhet dong chu thich vao giua du lieu.
+    stamp_path: Mapped[str | None] = mapped_column(Text)
 
 
 class SyncState(Base):
@@ -206,6 +269,13 @@ class SyncState(Base):
     source_run_ids: Mapped[list | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="idle")
     last_error: Mapped[str | None] = mapped_column(Text)
+
+    # QC Runner ghi ba cot nay. API doc de biet bo vi pham dang hien co
+    # thuoc lan nap nao va duoc sinh ra duoi bo luat version bao nhieu —
+    # ban ky cheo lai chung, neu khong thi "da duyet" khong tai hien duoc.
+    qc_run_id: Mapped[str | None] = mapped_column(String(64))
+    qc_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rules_version: Mapped[int | None] = mapped_column(Integer)
 
 
 class AuditLog(Base):

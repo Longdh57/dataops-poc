@@ -74,8 +74,8 @@ def scope_clause(p: Principal, requested_state: str | None,
     """Sinh dieu kien WHERE ep pham vi.
 
     `alias` la tien to bang, bat buoc khi cau truy van co JOIN — ca
-    fact_current lan fact_override deu co cot `state`, khong ghi ro bang
-    thi Postgres bao "column reference is ambiguous".
+    fact_current lan ticket deu co cot `state`, khong ghi ro bang thi
+    Postgres bao "column reference is ambiguous".
 
     Tra ve ("", []) khi khong can gioi han gi.
     Tra ve ("1 = 0", []) khi nguoi dung xin bang ngoai pham vi — ket qua

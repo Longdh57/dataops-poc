@@ -32,9 +32,9 @@ export function Severity({ value }: { value: string }) {
 export function Status({ value }: { value: string }) {
   const map: Record<string, [string, string]> = {
     open: ["pill pill-warn", "đang mở"],
-    applied: ["pill pill-good", "đã sửa"],
-    parked: ["pill", "gác lại"],
-    sent_back: ["pill pill-accent", "trả về"],
+    awaiting_verify: ["pill pill-accent", "chờ QC xác minh"],
+    closed: ["pill pill-good", "đã đóng"],
+    cancelled: ["pill", "huỷ"],
     pending: ["pill pill-warn", "chờ chạy"],
     running: ["pill pill-accent", "đang chạy"],
     done: ["pill pill-good", "xong"],
