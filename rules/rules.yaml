@@ -1,34 +1,69 @@
-# Bo luat QC khai bao bang cau hinh — them luat moi khong can sua code (P5).
-# Moi luat: id, severity, scope, expression (SQL boolean), message.
-# expression = TRUE nghia la dong do VI PHAM luat.
+# Bo luat QC khai bao bang cau hinh — them luat moi chi can them mot muc
+# o day, khong sua code (dung nhu P5 yeu cau).
+#
+# Moi luat la mot cau SELECT tra ve khoa tu nhien (year, state, gender,
+# name) va cot `observed` dang jsonb de nguoi dung thay so lieu goc.
+# Nguong duoc dat tu profile du lieu that, khong phai doan.
+#
+# CHI severity=critical moi khoa cong phat hanh.
 
-version: 1
+version: 2
 
-rules:
-  - id: market_share_sum
-    severity: critical
-    scope: [period, segment, region]
-    expression: "ABS(SUM(market_share) - 1.0) > 0.005"
-    message: "Tong thi phan cua nhom lech qua 0.5% so voi 100%"
-
-  - id: prior_year_orphan
-    severity: critical
-    scope: [company, segment]
-    expression: "prev_year_value IS NOT NULL AND current_value IS NULL"
-    message: "Nam truoc co so nhung nam nay bo trong"
-
-  - id: missing_quantity
-    severity: warning
-    scope: [row]
-    expression: "revenue > 0 AND (quantity IS NULL OR quantity = 0)"
-    message: "Co doanh thu nhung thieu so luong"
-
-  - id: yoy_outlier
-    severity: warning
-    scope: [company, segment]
-    expression: "prev_year_value > 0 AND ABS(current_value / prev_year_value - 1) > 3"
-    message: "Bien dong so voi nam truoc vuot 300%"
-
-# Chi severity=critical moi khoa cong phat hanh.
 gate:
   blocking_severities: [critical]
+
+rules:
+  # --- Toan ven du lieu: phai luon bang 0, khac 0 la sai o khau nap ---
+
+  - id: thi_phan_khong_tron_100
+    severity: critical
+    message: "Tong thi phan cua nhom lech khoi 100%"
+    sql: |
+      SELECT NULL::int AS year, g.state, g.gender, NULL::text AS name,
+             jsonb_build_object('nam', g.year, 'tong_thi_phan', round(g.tong::numeric, 6)) AS observed
+      FROM (SELECT year, state, gender, sum(market_share) AS tong
+            FROM fact_current GROUP BY year, state, gender) g
+      WHERE abs(g.tong - 1.0) > 0.000001
+
+  - id: duoi_nguong_kiem_duyet
+    severity: critical
+    message: "So tre duoi 5 — nguon SSA khong cong bo muc nay, du lieu dang ngo"
+    sql: |
+      SELECT year, state, gender, name,
+             jsonb_build_object('number', number) AS observed
+      FROM fact_current
+      WHERE number < 5
+
+  # --- Bat thuong nghiep vu: co that trong du lieu ---
+
+  - id: tang_dot_bien
+    severity: critical
+    message: "Tang hon 10 lan so voi nam truoc trong cung mot bang"
+    sql: |
+      SELECT year, state, gender, name,
+             jsonb_build_object('number', number, 'prev_number', prev_number,
+                                'gap_tang', round(number::numeric/prev_number, 1)) AS observed
+      FROM fact_current
+      WHERE prev_number > 0 AND number::numeric/prev_number > 10
+
+  - id: ten_pho_bien_bien_mat
+    severity: critical
+    message: "Ten tung pho bien (>=50 tre) bien mat hon 3 nam roi quay lai"
+    sql: |
+      SELECT year, state, gender, name,
+             jsonb_build_object('nam_truoc_co_du_lieu', prev_year,
+                                'so_nam_dut', year - prev_year,
+                                'prev_number', prev_number) AS observed
+      FROM fact_current
+      WHERE prev_year IS NOT NULL AND year - prev_year > 3 AND prev_number >= 50
+
+  - id: bien_dong_bat_thuong
+    severity: warning
+    message: "Bien dong so voi nam truoc vuot 300%"
+    sql: |
+      SELECT year, state, gender, name,
+             jsonb_build_object('number', number, 'prev_number', prev_number,
+                                'thay_doi_pct', round((number::numeric/prev_number - 1)*100, 1)) AS observed
+      FROM fact_current
+      WHERE prev_number > 0 AND abs(number::numeric/prev_number - 1) > 3
+        AND number::numeric/prev_number <= 10

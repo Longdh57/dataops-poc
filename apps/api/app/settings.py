@@ -6,9 +6,17 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://dataops:dataops@db:5432/dataops"
     gcp_project_id: str = ""
-    bigquery_dataset: str = ""
-    # Local dev bo qua IAP; tren Cloud Run bat len de bat buoc verify JWT.
+    project_number: str = ""
+    bigquery_dataset: str = "dataops_src"
+    staging_bucket: str = ""
+    region: str = "asia-southeast1"
+
+    # Bat buoc verify IAP JWT. Chi dat false khi chay local hoac khi
+    # IAP chua bat duoc — luc do danh tinh lay tu header X-Dev-User.
     require_iap: bool = False
+    # Backend ID de kiem audience cua IAP JWT (chi dung khi require_iap).
+    iap_audience: str = ""
+
     cors_origins: str = "http://localhost:3000"
 
 

@@ -1,0 +1,16 @@
+.git/
+.github/
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+.terraform/
+infra/.terraform/
+*.tfstate*
+*.tfplan
+.env
+.venv/
+__pycache__/
+**/__pycache__/
+.idea/
+implement-plan.html

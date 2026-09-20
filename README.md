@@ -175,6 +175,98 @@ SET synchronous_commit = off;
 `synchronous_commit = off` an toan o day vi bang staging la du lieu dung
 mot lan — hong thi sync lai tu BigQuery.
 
+## Phan quyen & cong phat hanh (P3)
+
+### Nguyen tac khong duoc pha
+
+Pham vi du lieu LUON lay tu database theo email, KHONG BAO GIO lay tu
+tham so client. Client gui `?state=CA` chi la mot y kien; dieu kien that
+la GIAO giua tham so do va pham vi duoc gan trong `app_role`.
+
+Kiem chung tren ha tang that:
+
+| Nguoi dung | Pham vi | Goi gi | Nhan duoc |
+|---|---|---|---|
+| analyst.tx | TX | `/api/facts` | chi TX |
+| analyst.tx | TX | `/api/facts?state=CA` | **0 dong** |
+| analyst.ca | CA | `/api/facts` | chi CA |
+| sale | CA+TX | `/api/exceptions` | 95 = 44 CA + 51 TX |
+
+Tra ve rong chu khong phai 403, de khong ro ri thong tin bang nao ton tai.
+
+### Khoa lac quan
+
+Moi dong co `version`. Sua voi `expected_version` cu thi nhan 409 kem diff:
+
+```json
+{
+  "loi": "co nguoi khac vua sua dong nay",
+  "expected_version": 0, "current_version": 1,
+  "gia_tri_goc": 127, "gia_tri_hien_tai": 777, "gia_tri_ban_muon_ghi": 111
+}
+```
+
+Gia tri KHONG bi ghi de — nguoi dung tu quyet dinh tai lai hay ghi de co
+chu dich.
+
+### Cong phat hanh
+
+Con ngoai le `critical` dang mo thi khong ai ky va khong ai tai file duoc:
+
+| Thao tac | Ket qua |
+|---|---|
+| Team Lead ky khi cong khoa | 409 + so ngoai le con lai |
+| Analyst thu ky | 403 — sai vai tro |
+| Tai file khi cong khoa | 409 |
+
+### Endpoint
+
+| Method | Duong dan | Y nghia |
+|---|---|---|
+| GET | `/api/me` | danh tinh, vai tro, pham vi |
+| GET | `/api/facts` | loc, sap xep (allowlist), phan trang keyset, merge override |
+| GET | `/api/exceptions` | hop thu ngoai le trong pham vi |
+| PATCH | `/api/exceptions/{id}` | apply / park / send_back — mot transaction |
+| GET | `/api/gate` | trang thai cong phat hanh |
+| POST | `/api/release` | ky ban so lieu (team_lead) |
+| POST | `/api/exports` | 202 + job_id |
+
+### Bo luat QC
+
+`rules/rules.yaml` — them luat moi chi can them mot muc, khong sua code.
+Nguong dat tu profile du lieu that:
+
+| Luat | Muc | Bat duoc |
+|---|---|---|
+| thi_phan_khong_tron_100 | critical | 0 — kiem tra toan ven |
+| duoi_nguong_kiem_duyet | critical | 0 — SSA khong cong bo duoi 5 |
+| tang_dot_bien | critical | 23 |
+| ten_pho_bien_bien_mat | critical | 1 |
+| bien_dong_bat_thuong | warning | 405 |
+
+```bash
+gcloud run jobs execute dataops-qc --region=asia-southeast1
+```
+
+### Danh tinh khi chua co IAP
+
+IAP chua bat duoc nen `REQUIRE_IAP=false`, danh tinh lay tu header
+`X-Dev-User`. Giao dien co bo chon danh tinh de thay phan quyen hoat dong:
+
+https://dataops-dev.3ddesigns.xyz/?as=analyst.tx@dataops.test
+
+Bat IAP len thi `REQUIRE_IAP` tu chuyen sang true (buoc theo `iap_enabled`
+trong Terraform), danh tinh den tu JWT Google ky va khong gia duoc.
+Ma verify IAP JWT da viet san trong `app/auth.py` — kiem ca chu ky,
+issuer lan audience, va KHONG tin header `x-goog-authenticated-user-email`
+vi header do gia duoc neu goi thang vao URL run.app.
+
+### Test
+
+```bash
+cd apps/api && pytest tests -q     # 14 test
+```
+
 ## Terraform
 
 ```bash

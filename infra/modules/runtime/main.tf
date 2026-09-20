@@ -77,9 +77,11 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.project_id
       }
 
+      # Phai di cung iap_enabled: bat REQUIRE_IAP khi IAP chua bat thi
+      # moi request deu 401 vi khong co assertion nao ca.
       env {
         name  = "REQUIRE_IAP"
-        value = "true"
+        value = var.iap_enabled ? "true" : "false"
       }
     }
   }
@@ -332,6 +334,91 @@ resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_job.sync.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.jobs_service_account}"
+}
+
+# QC Runner — ap bo luat trong rules/rules.yaml len fact_current.
+resource "google_cloud_run_v2_job" "qc" {
+  project             = var.project_id
+  name                = "dataops-qc"
+  location            = var.region
+  labels              = var.labels
+  deletion_protection = false
+
+  template {
+    template {
+      service_account = var.jobs_service_account
+      max_retries     = 1
+      timeout         = "900s"
+
+      vpc_access {
+        network_interfaces {
+          network    = var.network_id
+          subnetwork = var.subnet_id
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+
+      containers {
+        image   = var.jobs_image
+        command = ["python"]
+        args    = ["qc/main.py"]
+
+        env {
+          name  = "RULES_PATH"
+          value = "/srv/rules/rules.yaml"
+        }
+
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = var.db_url_secret_id
+              version = "latest"
+            }
+          }
+        }
+
+        resources {
+          limits = { cpu = "1", memory = "1Gi" }
+        }
+      }
+    }
+  }
+
+  depends_on = [terraform_data.secret_gate]
+
+  lifecycle {
+    ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
+  }
+}
+
+resource "google_cloud_scheduler_job" "qc" {
+  project     = var.project_id
+  name        = "dataops-qc-every-5m"
+  region      = var.region
+  schedule    = "*/5 * * * *"
+  time_zone   = "Asia/Ho_Chi_Minh"
+  description = "Chay lai bo luat QC; tu bo qua neu run chua doi"
+
+  attempt_deadline = "320s"
+  retry_config { retry_count = 1 }
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.qc.name}:run"
+    oauth_token {
+      service_account_email = var.jobs_service_account
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+}
+
+resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker_qc" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.qc.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.jobs_service_account}"
 }
