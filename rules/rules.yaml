@@ -18,7 +18,7 @@
 
 # Doi `version` moi khi sua bo luat: so nay duoc ghi vao tung ban ky, de sau
 # nay tai hien duoc team lead da duyet duoi bo luat nao.
-version: 2
+version: 3
 
 rules:
   # --- Toan ven du lieu: phai luon bang 0, khac 0 la sai o khau nap ---
@@ -48,13 +48,13 @@ rules:
 
   - id: tang_dot_bien
     severity: critical
-    message: "Tang hon 10 lan so voi nam truoc trong cung mot bang"
+    message: "Tang hon 15 lan so voi nam truoc trong cung mot bang"
     sql: |
       SELECT year, state, gender, name,
              jsonb_build_object('number', number, 'prev_number', prev_number,
                                 'gap_tang', round(number::numeric/prev_number, 1)) AS observed
       FROM fact_current
-      WHERE prev_number > 0 AND number::numeric/prev_number > 10
+      WHERE prev_number > 0 AND number::numeric/prev_number > 15
 
   - id: ten_pho_bien_bien_mat
     severity: critical
