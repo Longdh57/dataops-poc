@@ -2,6 +2,9 @@
 
 import type { ReactNode } from "react";
 
+import { useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
+
 export function Stat({
   label, value, note, tone, small,
 }: {
@@ -20,33 +23,41 @@ export function Stat({
   );
 }
 
+// Gia tri gui len tu API van la ma tieng Anh (critical, open, …) — chi
+// nhan hien ra man hinh moi doi theo ngon ngu. Khong co khoa dich thi
+// hien nguyen ma, con hon o trong.
+const SEVERITY: Record<string, [string, MessageKey]> = {
+  critical: ["pill pill-crit", "severity.critical"],
+  warning: ["pill pill-warn", "severity.warning"],
+};
+
 export function Severity({ value }: { value: string }) {
-  const map: Record<string, [string, string]> = {
-    critical: ["pill pill-crit", "nghiêm trọng"],
-    warning: ["pill pill-warn", "cảnh báo"],
-  };
-  const [cls, label] = map[value] ?? ["pill", value];
-  return <span className={cls}>{label}</span>;
+  const { t } = useI18n();
+  const hit = SEVERITY[value];
+  return <span className={hit ? hit[0] : "pill"}>{hit ? t(hit[1]) : value}</span>;
 }
+
+const STATUS: Record<string, [string, MessageKey]> = {
+  open: ["pill pill-warn", "status.open"],
+  awaiting_verify: ["pill pill-accent", "status.awaiting_verify"],
+  closed: ["pill pill-good", "status.closed"],
+  cancelled: ["pill", "status.cancelled"],
+  pending: ["pill pill-warn", "status.pending"],
+  running: ["pill pill-accent", "status.running"],
+  done: ["pill pill-good", "status.done"],
+  error: ["pill pill-crit", "status.error"],
+};
 
 export function Status({ value }: { value: string }) {
-  const map: Record<string, [string, string]> = {
-    open: ["pill pill-warn", "đang mở"],
-    awaiting_verify: ["pill pill-accent", "chờ QC xác minh"],
-    closed: ["pill pill-good", "đã đóng"],
-    cancelled: ["pill", "huỷ"],
-    pending: ["pill pill-warn", "chờ chạy"],
-    running: ["pill pill-accent", "đang chạy"],
-    done: ["pill pill-good", "xong"],
-    error: ["pill pill-crit", "lỗi"],
-  };
-  const [cls, label] = map[value] ?? ["pill", value];
-  return <span className={cls}>{label}</span>;
+  const { t } = useI18n();
+  const hit = STATUS[value];
+  return <span className={hit ? hit[0] : "pill"}>{hit ? t(hit[1]) : value}</span>;
 }
 
-export const Loading = ({ what = "dữ liệu" }: { what?: string }) => (
-  <p className="spin">Đang tải {what}…</p>
-);
+export function Loading({ what }: { what?: string }) {
+  const { t } = useI18n();
+  return <p className="spin">{t("common.loading", { what: what ?? t("common.data") })}</p>;
+}
 
 export function ErrBox({ error }: { error: unknown }) {
   if (!error) return null;
@@ -67,7 +78,7 @@ export function ErrBox({ error }: { error: unknown }) {
 export function Modal({
   title, children, onClose,
 }: {
-  title: string;
+  title: ReactNode;
   children: ReactNode;
   onClose: () => void;
 }) {

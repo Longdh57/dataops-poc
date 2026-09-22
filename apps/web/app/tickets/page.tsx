@@ -14,21 +14,24 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { useFmt, useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
 import { patch } from "@/app/lib/api";
-import { dt } from "@/app/lib/format";
 import { useTickets } from "@/app/lib/queries";
 import type { Ticket } from "@/app/lib/types";
 import { ErrBox, Loading, Modal, Status } from "@/app/ui/bits";
 
-const LOC = [
-  { v: "song", label: "chưa đóng" },
-  { v: "open", label: "đang mở" },
-  { v: "awaiting_verify", label: "chờ QC xác minh" },
-  { v: "closed", label: "đã đóng" },
-  { v: "cancelled", label: "đã huỷ" },
+const LOC: { v: string; label: MessageKey }[] = [
+  { v: "song", label: "tk.filter.live" },
+  { v: "open", label: "tk.filter.open" },
+  { v: "awaiting_verify", label: "tk.filter.awaiting" },
+  { v: "closed", label: "tk.filter.closed" },
+  { v: "cancelled", label: "tk.filter.cancelled" },
 ];
 
 export default function TicketsPage() {
+  const { t, tn } = useI18n();
+  const { dt } = useFmt();
   const [status, setStatus] = useState("song");
   const q = useTickets(status);
   const [acting, setActing] = useState<{ ticket: Ticket; action: string } | null>(null);
@@ -39,17 +42,16 @@ export default function TicketsPage() {
     <>
       <div className="card-head">
         <div>
-          <h1>Ticket gửi team Data</h1>
+          <h1>{t("tk.title")}</h1>
           <p className="sub">
-            Mỗi ticket mang một <b>điều kiện nghiệm thu</b> kiểm được bằng máy. QC đọc số thật ở
-            lần nạp kế tiếp và đối chiếu — chỉ nó mới đóng được ticket.
+            {tn("tk.sub", { acceptance: <b>{t("tk.subAcceptance")}</b> })}
           </p>
         </div>
         <div className="field">
-          <label htmlFor="st">Trạng thái</label>
+          <label htmlFor="st">{t("tk.statusLabel")}</label>
           <select id="st" value={status} onChange={(e) => setStatus(e.target.value)}>
             {LOC.map((o) => (
-              <option key={o.v} value={o.v}>{o.label}</option>
+              <option key={o.v} value={o.v}>{t(o.label)}</option>
             ))}
           </select>
         </div>
@@ -59,13 +61,9 @@ export default function TicketsPage() {
         <div className="banner banner-crit" style={{ marginBottom: 16 }}>
           <div>
             <div className="banner-title">
-              {q.data.blocking_open} ticket đang chặn phát hành
+              {t("tk.blockingTitle", { n: q.data.blocking_open })}
             </div>
-            <div className="banner-body">
-              Không ký và không xuất file được cho tới khi nguồn sửa xong và QC xác minh. Nếu một
-              lỗi trong số này không ảnh hưởng bản đang bán, team lead gỡ chặn từng cái — đó là
-              một quyết định có tên người, không phải bộ lọc.
-            </div>
+            <div className="banner-body">{t("tk.blockingBody")}</div>
           </div>
         </div>
       ) : null}
@@ -74,92 +72,92 @@ export default function TicketsPage() {
 
       <div className="card card-pad0">
         {q.isPending ? (
-          <div style={{ padding: 14 }}><Loading what="ticket" /></div>
+          <div style={{ padding: 14 }}><Loading what={t("tk.loading")} /></div>
         ) : rows.length ? (
           <table className="t">
             <thead>
               <tr>
-                <th>#</th>
-                <th>Ô</th>
-                <th>Lỗi</th>
-                <th className="num">Cần</th>
-                <th className="num">Nguồn đang là</th>
-                <th>Trạng thái</th>
-                <th>Người mở</th>
-                <th>QC kiểm gần nhất</th>
+                <th>{t("tk.col.id")}</th>
+                <th>{t("tk.col.cell")}</th>
+                <th>{t("tk.col.issue")}</th>
+                <th className="num">{t("tk.col.expected")}</th>
+                <th className="num">{t("tk.col.sourceNow")}</th>
+                <th>{t("tk.col.status")}</th>
+                <th>{t("tk.col.openedBy")}</th>
+                <th>{t("tk.col.lastQc")}</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {rows.map((t) => {
-                const song = t.status === "open" || t.status === "awaiting_verify";
+              {rows.map((row) => {
+                const song = row.status === "open" || row.status === "awaiting_verify";
                 return (
-                  <tr key={t.id}>
-                    <td className="mono">{t.id}</td>
+                  <tr key={row.id}>
+                    <td className="mono">{row.id}</td>
                     <td className="mono" style={{ fontSize: 12 }}>
-                      {t.state} · {t.year} · {t.institution}
-                      {t.from_rule_id ? (
-                        <div className="tone-muted" style={{ fontSize: 11 }}>từ {t.from_rule_id}</div>
-                      ) : (
-                        <div className="tone-muted" style={{ fontSize: 11 }}>người tự phát hiện</div>
-                      )}
+                      {row.state} · {row.year} · {row.institution}
+                      <div className="tone-muted" style={{ fontSize: 11 }}>
+                        {row.from_rule_id
+                          ? t("tk.fromRule", { rule: row.from_rule_id })
+                          : t("tk.selfFound")}
+                      </div>
                     </td>
                     <td>
-                      <div style={{ color: "var(--ink)" }}>{t.title}</div>
-                      {t.evidence ? (
-                        <div className="tone-muted" style={{ fontSize: 11.5 }}>{t.evidence}</div>
+                      <div style={{ color: "var(--ink)" }}>{row.title}</div>
+                      {row.evidence ? (
+                        <div className="tone-muted" style={{ fontSize: 11.5 }}>{row.evidence}</div>
                       ) : null}
                     </td>
-                    <td className="num mono">{t.expected_value}</td>
+                    <td className="num mono">{row.expected_value}</td>
                     <td className="num mono">
-                      {t.last_observed ?? t.observed_at_open ?? "—"}
+                      {row.last_observed ?? row.observed_at_open ?? "—"}
                     </td>
                     <td>
-                      <Status value={t.status} />
-                      {t.blocking && song ? (
-                        <div><span className="pill pill-crit">chặn</span></div>
+                      <Status value={row.status} />
+                      {row.blocking && song ? (
+                        <div><span className="pill pill-crit">{t("tk.blockPill")}</span></div>
                       ) : null}
                     </td>
                     <td style={{ fontSize: 12 }}>
-                      {t.created_by}
-                      <div className="tone-muted" style={{ fontSize: 11 }}>{dt(t.created_at)}</div>
+                      {row.created_by}
+                      <div className="tone-muted" style={{ fontSize: 11 }}>{dt(row.created_at)}</div>
                     </td>
                     <td className="mono" style={{ fontSize: 11 }}>
-                      {t.last_checked_run_id ? (
+                      {row.last_checked_run_id ? (
                         <>
-                          {t.last_checked_run_id}
-                          <div className="tone-muted">{dt(t.last_checked_at)}</div>
+                          {row.last_checked_run_id}
+                          <div className="tone-muted">{dt(row.last_checked_at)}</div>
                         </>
-                      ) : t.closed_run_id ? (
-                        <>đóng ở {t.closed_run_id}</>
+                      ) : row.closed_run_id ? (
+                        <>{t("tk.closedAt", { runId: row.closed_run_id })}</>
                       ) : (
-                        <span className="tone-muted">chưa kiểm</span>
+                        <span className="tone-muted">{t("tk.notChecked")}</span>
                       )}
                     </td>
                     <td>
                       {song ? (
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {t.status === "open" ? (
+                          {row.status === "open" ? (
                             <button
                               className="btn btn-sm"
-                              onClick={() => setActing({ ticket: t, action: "mark_fixed" })}
+                              onClick={() => setActing({ ticket: row, action: "mark_fixed" })}
                             >
-                              Đã sửa nguồn
+                              {t("tk.markFixed")}
                             </button>
                           ) : null}
                           {q.data?.can_set_blocking ? (
                             <button
                               className="btn btn-sm"
-                              onClick={() => setActing({ ticket: t, action: "set_blocking" })}
+                              onClick={() => setActing({ ticket: row, action: "set_blocking" })}
                             >
-                              {t.blocking ? "Gỡ chặn" : "Đặt chặn"}
+                              {row.blocking ? t("tk.unblock") : t("tk.setBlock")}
                             </button>
                           ) : null}
                           <button
                             className="btn btn-sm"
-                            onClick={() => setActing({ ticket: t, action: "cancel" })}
+                            onClick={() => setActing({ ticket: row, action: "cancel" })}
                           >
-                            Huỷ
+                            {t("tk.cancel")}
                           </button>
                         </div>
                       ) : null}
@@ -170,9 +168,7 @@ export default function TicketsPage() {
             </tbody>
           </table>
         ) : (
-          <p className="spin" style={{ padding: 14 }}>
-            Không có ticket nào ở trạng thái này.
-          </p>
+          <p className="spin" style={{ padding: 14 }}>{t("tk.empty")}</p>
         )}
       </div>
 
@@ -187,10 +183,10 @@ export default function TicketsPage() {
   );
 }
 
-const TIEU_DE: Record<string, string> = {
-  mark_fixed: "Báo đã sửa ở nguồn",
-  set_blocking: "Đổi mức chặn phát hành",
-  cancel: "Huỷ ticket — báo nhầm",
+const TIEU_DE: Record<string, MessageKey> = {
+  mark_fixed: "tk.modal.mark_fixed",
+  set_blocking: "tk.modal.set_blocking",
+  cancel: "tk.modal.cancel",
 };
 
 function ActionModal({
@@ -202,6 +198,7 @@ function ActionModal({
   action: string;
   onClose: () => void;
 }) {
+  const { t, tn } = useI18n();
   const qc = useQueryClient();
   const [reason, setReason] = useState("");
 
@@ -220,50 +217,46 @@ function ActionModal({
     },
   });
 
+  const title = t("tk.modal.title", {
+    action: TIEU_DE[action] ? t(TIEU_DE[action]) : action,
+    id: ticket.id,
+  });
+
   return (
-    <Modal title={`${TIEU_DE[action]} — #${ticket.id}`} onClose={onClose}>
+    <Modal title={title} onClose={onClose}>
       <p className="sub" style={{ marginBottom: 10 }}>
-        {action === "mark_fixed" ? (
-          <>
-            Ticket chuyển sang <b>chờ QC xác minh</b>. Nó chỉ đóng khi lần nạp kế tiếp đọc được
-            đúng <span className="mono">{ticket.expected_value}</span> ở ô{" "}
-            <span className="mono">
-              {ticket.state}/{ticket.institution}/{ticket.year}
-            </span>
-            . Lệch thì ticket tự bật lại kèm số đọc được.
-          </>
-        ) : action === "set_blocking" ? (
-          ticket.blocking ? (
-            <>
-              Gỡ chặn nghĩa là <b>vẫn phát hành được</b> dù lỗi này chưa sửa. Lý do bạn ghi sẽ
-              nằm trong audit log và ticket vẫn mở cho tới khi nguồn sửa.
-            </>
-          ) : (
-            <>Đặt chặn nghĩa là không ai ký và không ai xuất file được cho tới khi nguồn sửa xong.</>
-          )
-        ) : (
-          <>
-            Huỷ dùng khi ticket mở nhầm — dữ liệu thật ra vẫn đúng. Nó không sửa gì ở nguồn và
-            không xoá dấu vết.
-          </>
-        )}
+        {action === "mark_fixed"
+          ? tn("tk.modal.markFixedBody", {
+              awaiting: <b>{t("tk.modal.markFixedAwaiting")}</b>,
+              expected: <span className="mono">{ticket.expected_value}</span>,
+              cell: (
+                <span className="mono">
+                  {ticket.state}/{ticket.institution}/{ticket.year}
+                </span>
+              ),
+            })
+          : action === "set_blocking"
+            ? ticket.blocking
+              ? tn("tk.modal.unblockBody", { still: <b>{t("tk.modal.unblockStill")}</b> })
+              : t("tk.modal.blockBody")
+            : t("tk.modal.cancelBody")}
       </p>
       <textarea
         rows={2}
-        placeholder="Lý do — bắt buộc, vào audit log"
+        placeholder={t("exc.reasonPlaceholder")}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         style={{ width: "100%", marginBottom: 10 }}
       />
       <ErrBox error={m.error} />
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-        <button className="btn" onClick={onClose}>Thôi</button>
+        <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
         <button
           className="btn btn-primary"
           disabled={reason.trim().length < 3 || m.isPending}
           onClick={() => m.mutate()}
         >
-          {m.isPending ? "Đang gửi…" : "Xác nhận"}
+          {m.isPending ? t("common.sending") : t("common.confirm")}
         </button>
       </div>
     </Modal>

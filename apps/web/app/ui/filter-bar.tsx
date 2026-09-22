@@ -5,20 +5,22 @@
 
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/app/i18n/context";
 import { useFilters } from "@/app/lib/filters";
 import { useOptions } from "@/app/lib/queries";
 
 export default function FilterBar() {
+  const { t } = useI18n();
   const { filters, setFilters, count } = useFilters();
   const { data: opt } = useOptions();
   const [institution, setInstitution] = useState(filters.institution ?? "");
 
   // Go phim khong goi API ngay — cho 350ms roi moi day len URL.
   useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if ((filters.institution ?? "") !== institution) setFilters({ institution });
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [institution]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -29,13 +31,13 @@ export default function FilterBar() {
     <div className="filterbar">
       <div className="filterbar-inner">
         <div className="field">
-          <label htmlFor="f-year">Kỳ</label>
+          <label htmlFor="f-year">{t("filter.year")}</label>
           <select
             id="f-year"
             value={filters.year ?? ""}
             onChange={(e) => setFilters({ year: e.target.value })}
           >
-            <option value="">tất cả năm</option>
+            <option value="">{t("filter.allYears")}</option>
             {opt?.years.map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
@@ -43,13 +45,13 @@ export default function FilterBar() {
         </div>
 
         <div className="field">
-          <label htmlFor="f-state">Khu vực</label>
+          <label htmlFor="f-state">{t("filter.state")}</label>
           <select
             id="f-state"
             value={filters.state ?? ""}
             onChange={(e) => setFilters({ state: e.target.value })}
           >
-            <option value="">trong phạm vi của tôi</option>
+            <option value="">{t("filter.myScope")}</option>
             {opt?.states.map((s) => (
               <option key={s} value={s}>{s}</option>
             ))}
@@ -57,11 +59,11 @@ export default function FilterBar() {
         </div>
 
         <div className="field">
-          <label htmlFor="f-institution">Tổ chức</label>
+          <label htmlFor="f-institution">{t("filter.institution")}</label>
           <input
             id="f-institution"
             type="text"
-            placeholder="bắt đầu bằng…"
+            placeholder={t("filter.institutionPlaceholder")}
             value={institution}
             onChange={(e) => setInstitution(e.target.value)}
             style={{ width: 160 }}
@@ -70,7 +72,7 @@ export default function FilterBar() {
 
         {count > 0 ? (
           <button className="btn btn-sm" onClick={() => setFilters({ state: "", year: "", institution: "" })}>
-            Xoá {count} bộ lọc
+            {t("filter.clear", { n: count })}
           </button>
         ) : null}
       </div>

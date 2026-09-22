@@ -4,6 +4,9 @@
 // lan o day roi moi luoi import tu day, trong khong nap trung.
 
 import { AllCommunityModule, ModuleRegistry, themeQuartz } from "ag-grid-community";
+import { useMemo } from "react";
+
+import { useI18n } from "@/app/i18n/context";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -27,3 +30,13 @@ export const gridTheme = themeQuartz.withParams({
   wrapperBorderRadius: 10,
   spacing: 6,
 });
+
+/** Vai chuoi cua chinh AG Grid. Mac dinh cua no la tieng Anh nen ban en
+ *  gan nhu khong doi gi — ban vi thi can. */
+export function useGridLocale(): Record<string, string> {
+  const { t } = useI18n();
+  return useMemo(
+    () => ({ noRowsToShow: t("grid.noRows"), loadingOoo: t("grid.loading") }),
+    [t],
+  );
+}
