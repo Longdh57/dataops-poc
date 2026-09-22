@@ -121,7 +121,7 @@ ngoại lệ một; team lead **duyệt cả lần nạp, một lần, có ghi c
 
 > Bản *"SSA 2024 — đợt 3"*, ký bởi `lead@cty.com` lúc 21/09/2026 14:30.
 > Duyệt cho qua dù còn vi phạm: `duoi_nguong_kiem_duyet` (3 ô),
-> `bien_dong_bat_thuong` (405 ô).
+> `unusual_deposit_change` (405 ô).
 > Ticket chưa đóng: #123, #140.
 > Lý do: "3 ô dưới ngưỡng là số thật của bang nhỏ, đã đối chiếu SSA.
 > #123 không ảnh hưởng bang đang bán."

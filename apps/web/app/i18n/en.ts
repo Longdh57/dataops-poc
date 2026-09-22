@@ -374,6 +374,7 @@ export const en: Record<MessageKey, string> = {
   "agent.thinking": "The agent is reading the data…",
   "agent.placeholder": "Ask about violations, tickets, what to fix first…",
   "agent.send": "Send",
+  "agent.newChat": "New conversation",
 
   // ---------------------------------------------------------------- AG Grid
   "grid.noRows": "No rows to show",

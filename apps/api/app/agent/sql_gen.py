@@ -1,20 +1,22 @@
-"""NL -> SQL cho get_fact: model chi sinh MOT dieu kien WHERE, khong phai
-ca cau lenh — xem Context trong ke hoach da duyet cho ly do.
+"""NL -> SQL for get_fact: the model only generates a SINGLE WHERE condition,
+not a full statement — see the Context section in the approved plan for why.
 
-Bon vong kiem tra truoc khi mot dieu kien duoc phep chay (`_validate_where`):
-  1. Ngoac () va nhay don ' can bang — dong dung dieu lo hong "1=1) OR (..."
-     pha vo nhom bao ngoai ma code tu ghep, khien dieu kien pham vi bi AND
-     vao nhanh sai (uu tien toan tu AND cao hon OR).
-  2. Khong ';', '--', '/*'  — khong noi lenh, khong meo comment.
-  3. Khong duoc "goi ham": mot tu ngay truoc dau "(" ma khong phai
-     AND/OR/NOT/IN thi bi coi la goi ham va chan (pg_sleep(), count(),...).
-     Nhom ngoac binh thuong sau AND/OR/NOT/IN van hop le.
-  4. Danh sach tu khoa cam (SELECT/INSERT/.../pg_*/information_schema).
+Four checks run before a condition is allowed to execute (`_validate_where`):
+  1. Balanced parens () and balanced single quotes ' — this specifically
+     closes the "1=1) OR (..." hole, which would break out of the wrapping
+     group our own code builds and AND the scope condition onto the wrong
+     branch (AND binds tighter than OR).
+  2. No ';', '--', '/*' — no statement stacking, no comment tricks.
+  3. No "function calls": a word immediately before "(" that isn't
+     AND/OR/NOT/IN is treated as a function call and blocked (pg_sleep(),
+     count(), etc.). Normal grouping parens after AND/OR/NOT/IN are fine.
+  4. A blocklist of forbidden keywords (SELECT/INSERT/.../pg_*/
+     information_schema).
 
-Dieu kien qua duoc bon vong nay van LUON bi AND them dieu kien pham vi o
-tang SQL (dung `_scope_where` — ham dang dung cho moi truy van khac trong
-queries.py), roi loc lai lan nua o Python sau khi doc — hai lop phong thu,
-khong lop nao mot minh la du.
+A condition that passes all four is STILL always ANDed with the scope
+condition at the SQL level (via `_scope_where` — the same helper every
+other query in queries.py uses), then filtered again in Python after
+reading — two layers of defense, neither one sufficient alone.
 """
 
 from __future__ import annotations
@@ -36,17 +38,18 @@ _FORBIDDEN_KEYWORDS = re.compile(
     r"copy|call|execute|merge|union|pg_\w*|information_schema)\b",
     re.IGNORECASE,
 )
-# Mot "tu ngay truoc dau (" ma KHONG phai AND/OR/NOT/IN thi coi la goi ham
-# (pg_sleep(...), count(...), v.v.) — phai chan. Nhom ngoac binh thuong sau
-# AND/OR/NOT/IN (vi du "... AND (year = 2025 OR year = 2026)") thi hop le.
+# A word immediately before "(" that is NOT AND/OR/NOT/IN is treated as a
+# function call (pg_sleep(...), count(...), etc.) and blocked. Normal
+# grouping parens after AND/OR/NOT/IN (e.g. "... AND (year = 2025 OR
+# year = 2026)") are fine.
 _CALL_LIKE = re.compile(r"(\w+)\s*\(")
 _SAFE_BEFORE_PAREN = {"and", "or", "not", "in"}
 
 _ALLOWED_COLUMNS = (
-    "year (int), state (text, ma 2 ky tu), institution_id (int), "
-    "institution (text — TEN TO CHUC, cach viet hoa/thuong KHONG on dinh "
-    "giua cac nam nen LUON dung ILIKE '%...%' de loc, khong bao gio dung "
-    "'='), deposit (bigint, don vi nghin USD), deposit_share (float, 0..1), "
+    "year (int), state (text, 2-letter code), institution_id (int), "
+    "institution (text — INSTITUTION NAME, casing is NOT stable across "
+    "years so ALWAYS use ILIKE '%...%' to filter, never '='), deposit "
+    "(bigint, in thousands of USD), deposit_share (float, 0..1), "
     "prev_deposit (bigint), prev_year (int)"
 )
 
@@ -62,8 +65,8 @@ def _get_client() -> genai.Client:
 
 
 def _reference_values(cur) -> dict:
-    """Gia tri that dang co trong fact_current — truy van song moi lan goi,
-    khong cache/ghi file, nen khong bao gio lech sau mot lan sync moi."""
+    """Real values currently in fact_current — queried live on every call,
+    never cached/written to a file, so it can never go stale after a sync."""
     cur.execute("SELECT DISTINCT state FROM fact_current ORDER BY state")
     states = [r["state"] for r in cur.fetchall()]
     cur.execute("SELECT DISTINCT year FROM fact_current ORDER BY year")
@@ -72,10 +75,11 @@ def _reference_values(cur) -> dict:
 
 
 def _parens_valid(fragment: str) -> bool:
-    """Dem tong so KHONG du — "1=1) OR (state='CA'" co dung 1 dau ( va 1
-    dau ), nhung dong TRUOC khi mo: dung tach nhom bao ngoai ma code tu
-    ghep, roi dieu kien pham vi bi AND vao nhanh sai (uu tien AND cao hon
-    OR). Phai theo doi do sau thuc su, tu choi ngay khi do sau am."""
+    """Counting totals is NOT enough — "1=1) OR (state='CA'" has exactly 1
+    "(" and 1 ")", but the close comes BEFORE the open: it breaks out of
+    the wrapping group our own code builds, ANDing the scope condition onto
+    the wrong branch. Must track real depth, reject as soon as depth goes
+    negative."""
     depth = 0
     for ch in fragment:
         if ch == "(":
@@ -88,40 +92,43 @@ def _parens_valid(fragment: str) -> bool:
 
 
 def _validate_where(fragment: str) -> str | None:
-    """Tra ve thong bao loi neu dieu kien khong an toan, None neu qua duoc."""
+    """Returns an error message if the condition isn't safe, None if it passes."""
     if not fragment or not fragment.strip():
-        return "dieu kien rong"
+        return "empty condition"
     if not _parens_valid(fragment):
-        return "ngoac tron () khong can bang hoac sai thu tu"
+        return "parentheses () are unbalanced or out of order"
     if fragment.count("'") % 2 != 0:
-        return "dau nhay don ' khong can bang"
+        return "single quotes ' are unbalanced"
     if ";" in fragment or "--" in fragment or "/*" in fragment:
-        return "khong duoc chua ';', '--', hoac '/*'"
+        return "must not contain ';', '--', or '/*'"
     for m in _CALL_LIKE.finditer(fragment):
         if m.group(1).lower() not in _SAFE_BEFORE_PAREN:
-            return "khong duoc goi ham (chi dung toan tu so sanh/logic don gian)"
+            return "function calls are not allowed (use simple comparison/logical operators only)"
     if _FORBIDDEN_KEYWORDS.search(fragment):
-        return "chua tu khoa khong duoc phep (chi la mot dieu kien loc, khong phai cau lenh)"
+        return "contains a disallowed keyword (this must be a filter condition, not a statement)"
     return None
 
 
 def _generate_where(question: str, reference: dict, prior_error: str | None) -> str:
-    retry_note = f"\n\nLan truoc bi tu choi vi: {prior_error}. Sua lai cho dung." if prior_error else ""
-    prompt = f"""Dich cau hoi sau thanh MOT DIEU KIEN loc (WHERE) tren bang fact_current.
+    retry_note = (
+        f"\n\nThe previous attempt was rejected because: {prior_error}. Fix it."
+        if prior_error else ""
+    )
+    prompt = f"""Translate the following question into a SINGLE filter condition (WHERE) on the fact_current table.
 
-Cot dung duoc: {_ALLOWED_COLUMNS}
+Columns you can use: {_ALLOWED_COLUMNS}
 
-Bang hien co state: {reference['states']}
-Bang hien co year: {reference['years']}
+States currently in the table: {reference['states']}
+Years currently in the table: {reference['years']}
 
-CHI tra ve DUY NHAT bieu thuc dieu kien — KHONG co chu 'WHERE', KHONG co
-'SELECT', KHONG co dau cham phay, KHONG giai thich gi them, KHONG dung
-markdown/code fence. Vi du dung dinh dang:
+Return ONLY the condition expression — NO 'WHERE' keyword, NO 'SELECT', NO
+semicolon, NO explanation, NO markdown/code fence. Example of the expected
+format:
   state = 'TX' AND deposit > 100000
   institution ILIKE '%wells fargo%' AND year = 2026
 {retry_note}
 
-Cau hoi: {question}"""
+Question: {question}"""
 
     resp = _get_client().models.generate_content(
         model=settings.agent_model,
@@ -129,16 +136,18 @@ Cau hoi: {question}"""
         config=types.GenerateContentConfig(temperature=0),
     )
     text = (resp.text or "").strip()
-    # Phong khi model van "ro" markdown code fence du da can:
+    # Guard against the model wrapping the answer in a markdown code fence
+    # despite being told not to:
     text = re.sub(r"^```(sql)?\s*|\s*```$", "", text, flags=re.IGNORECASE).strip()
     return text.rstrip(";").strip()
 
 
 def query_fact_natural_language(cur, scope: Scope, question: str, limit: int = 50) -> dict:
-    """Sinh dieu kien WHERE tu cau hoi tu nhien, thu chay toi da MAX_ATTEMPTS
-    lan — loi lan truoc (validator hoac chinh Postgres bao) duoc dua lai vao
-    lan sinh ke tiep de model tu sua. Het luot ma van sai thi tra ve loi ro
-    rang thay vi bia du lieu.
+    """Generate a WHERE condition from a natural-language question, retrying
+    up to MAX_ATTEMPTS times — the previous error (from the validator or
+    from Postgres itself) is fed back into the next generation so the model
+    can self-correct. Returns a clear error instead of making up data once
+    attempts are exhausted.
     """
     reference = _reference_values(cur)
     scope_sql, scope_params = _scope_where(scope)
@@ -148,17 +157,17 @@ def query_fact_natural_language(cur, scope: Scope, question: str, limit: int = 5
         try:
             fragment = _generate_where(question, reference, last_error)
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(502, f"khong goi duoc Vertex AI de sinh SQL: {exc}") from exc
+            raise HTTPException(502, f"could not call Vertex AI to generate SQL: {exc}") from exc
 
         problem = _validate_where(fragment)
         if problem:
-            last_error = f"dieu kien '{fragment}' bi tu choi: {problem}"
+            last_error = f"condition '{fragment}' was rejected: {problem}"
             continue
 
-        # psycopg doc ca chuoi SQL nhu template kieu %-format khi co truyen
-        # params, nen dau % that trong dieu kien (bat buoc co voi ILIKE
-        # '%...%') phai duoc gap doi thanh %% de khong bi hieu nham thanh
-        # placeholder — khong lam vay se loi "only %s/%b/%t are allowed".
+        # psycopg reads the whole SQL string as a %-format template whenever
+        # params are passed, so a literal % in the condition (required for
+        # ILIKE '%...%') must be doubled to %% so it isn't mistaken for a
+        # placeholder — skipping this causes "only %s/%b/%t are allowed".
         where_clause = f"({fragment.replace('%', '%%')})"
         params = []
         if scope_sql:
@@ -175,20 +184,21 @@ def query_fact_natural_language(cur, scope: Scope, question: str, limit: int = 5
             rows = cur.fetchall()
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
-            # Postgres huy ca transaction sau 1 loi — khong rollback thi lan
-            # thu tiep theo tren CUNG connection se loi day chuyen voi
-            # "current transaction is aborted", che mat loi that cua fragment.
+            # Postgres aborts the whole transaction after one error — without
+            # a rollback, the next attempt on the SAME connection fails in a
+            # cascade with "current transaction is aborted", hiding the
+            # fragment's real error.
             cur.connection.rollback()
             continue
 
-        # Loc lai o Python — phong thu them, du dieu kien pham vi da AND o SQL.
+        # Filtered again in Python — extra defense, even though the scope
+        # condition is already ANDed in at the SQL level.
         if not scope.unrestricted:
             rows = [r for r in rows if r["state"] in scope.states]
         return {"sql_where": fragment, "rows": rows[:limit], "attempts": attempt}
 
     return {
-        "error": "khong_the_truy_van",
-        "message": "Khong the truy van tren du lieu goc hien co sau "
-                   f"{MAX_ATTEMPTS} lan thu.",
+        "error": "cannot_query",
+        "message": f"Could not query the raw data after {MAX_ATTEMPTS} attempts.",
         "last_error": last_error,
     }

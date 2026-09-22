@@ -134,7 +134,7 @@ def test_query_fact_het_luot_van_sai_tra_ve_loi_ro_rang(monkeypatch):
     finally:
         conn.close()
 
-    assert result["error"] == "khong_the_truy_van"
+    assert result["error"] == "cannot_query"
     assert result["last_error"]
 
 

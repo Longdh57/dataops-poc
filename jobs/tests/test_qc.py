@@ -67,7 +67,7 @@ def test_datetime_thanh_iso_con_observed_giu_nguyen_object():
     import datetime as dt
 
     rows = [{
-        "id": 1, "run_id": "run-1", "rule_id": "tang_dot_bien", "severity": "critical",
+        "id": 1, "run_id": "run-1", "rule_id": "deposit_spike", "severity": "critical",
         "year": 2013, "state": "TX", "institution_id": 3510, "institution": "Bank of America",
         "message": "m", "observed": {"deposit": 98, "prev_deposit": 6},
         "created_at": dt.datetime(2026, 9, 22, 2, 30, tzinfo=dt.timezone.utc),

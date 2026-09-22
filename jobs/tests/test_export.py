@@ -94,13 +94,13 @@ def test_dau_ban_ky_noi_that_khi_ban_sach():
 
 def test_dau_ban_ky_khong_giau_mon_no():
     """Ban ky kem no va ban sach khong duoc trong giong nhau."""
-    job = ban_ky(violations={"duoi_nguong_kiem_duyet": 3, "bien_dong_bat_thuong": 405},
+    job = ban_ky(violations={"duoi_nguong_kiem_duyet": 3, "unusual_deposit_change": 405},
                  violations_fingerprint="f00d", open_tickets=[123, 140],
                  approval_note="3 o duoi nguong la so that cua bang nho")
     txt = "\n".join(stamp_lines(job, ["CA", "TX"], 9))
 
     assert "VAN CON vi pham" in txt
-    assert "bien_dong_bat_thuong: 405" in txt
+    assert "unusual_deposit_change: 405" in txt
     assert "duoi_nguong_kiem_duyet: 3" in txt
     assert "#123, #140" in txt
     assert "3 o duoi nguong la so that cua bang nho" in txt
@@ -119,7 +119,7 @@ def test_xlsx_co_sheet_bia_ban_ky_dung_truoc_du_lieu(tmp_path):
     truoc khi thay so."""
     from openpyxl import load_workbook
 
-    job = ban_ky(violations={"tang_dot_bien": 23}, open_tickets=[5])
+    job = ban_ky(violations={"deposit_spike": 23}, open_tickets=[5])
     rows = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, 0.6)]))
     path = tmp_path / "x.xlsx"
     n, _ = export_main.write_xlsx(str(path), rows, stamp_lines(job, None, 1))
@@ -129,7 +129,7 @@ def test_xlsx_co_sheet_bia_ban_ky_dung_truoc_du_lieu(tmp_path):
     assert wb.sheetnames[0] == "Ban ky"
     assert wb.sheetnames[1] == "Trang 1"
     bia = "\n".join(str(c[0].value or "") for c in wb["Ban ky"].iter_rows())
-    assert "tang_dot_bien: 23" in bia
+    assert "deposit_spike: 23" in bia
     assert "#5" in bia
 
 

@@ -8,13 +8,21 @@
 //
 // Hoi thoai duoc nho boi SERVER (DatabaseSessionService tren Postgres) qua
 // `session_id` — khong con gui lai toan bo lich su moi lan hoi nhu truoc.
+//
+// Rieng MAN HINH (danh sach bong chat hien thi + session_id dang dung) chi
+// nam trong state cua component, nen chuyen tab roi quay lai se mat —
+// component unmount/mount lai, con hoi thoai that tren server thi van con
+// nguyen. Luu ban hien thi vao localStorage, khoa THEO TUNG DANH TINH, de
+// (a) chuyen tab/tai lai trang van thay hoi thoai cu, va (b) doi danh tinh
+// trong cung trinh duyet KHONG lam lo hoi thoai cua nguoi truoc.
 
 import { useMutation } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useI18n } from "@/app/i18n/context";
 import type { MessageKey } from "@/app/i18n/translate";
 import { post } from "@/app/lib/api";
+import { useMe } from "@/app/lib/queries";
 import { ErrBox } from "@/app/ui/bits";
 
 type Turn = { role: "user" | "agent"; text: string };
@@ -24,14 +32,61 @@ type ChatResponse = {
   session_id: string;
 };
 
+type Saved = { turns: Turn[]; sessionId: string | null };
+
 const GOI_Y: MessageKey[] = ["agent.suggest1", "agent.suggest2", "agent.suggest3"];
+
+function storageKey(email: string | undefined): string | null {
+  return email ? `dataops.agent.chat.${email}` : null;
+}
 
 export default function AgentPage() {
   const { t } = useI18n();
+  const { data: me } = useMe();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Nap lai hoi thoai da luu MOI KHI biet duoc dung danh tinh nao dang hoi
+  // — chay lai khi doi danh tinh, va luc do phai xoa trang trong luc cho,
+  // khong thi ban cu con hien tren man trong khoanh khac.
+  useEffect(() => {
+    setHydrated(false);
+    const key = storageKey(me?.email);
+    if (!key) {
+      setTurns([]);
+      setSessionId(null);
+      setHydrated(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      const saved = raw ? (JSON.parse(raw) as Saved) : null;
+      setTurns(saved?.turns ?? []);
+      setSessionId(saved?.sessionId ?? null);
+    } catch {
+      // che do an danh, dung luong day, hoac JSON hong — bat dau lai tu dau.
+      setTurns([]);
+      setSessionId(null);
+    } finally {
+      setHydrated(true);
+    }
+  }, [me?.email]);
+
+  // Ghi lai moi khi doi, nhung CHI sau khi da nap xong — thieu dieu kien
+  // nay se co mot lan ghi mang rong luc component vua mount, de len ban da
+  // luu truoc do dung 0 giay sau khi nap.
+  useEffect(() => {
+    const key = storageKey(me?.email);
+    if (!key || !hydrated) return;
+    try {
+      localStorage.setItem(key, JSON.stringify({ turns, sessionId } satisfies Saved));
+    } catch {
+      // het dung luong hoac che do an danh — bo qua, khong lam hong UI.
+    }
+  }, [turns, sessionId, hydrated, me?.email]);
 
   const m = useMutation({
     mutationFn: (message: string) =>
@@ -50,6 +105,19 @@ export default function AgentPage() {
     m.mutate(q);
   }
 
+  function newConversation() {
+    setTurns([]);
+    setSessionId(null);
+    const key = storageKey(me?.email);
+    if (key) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // bo qua
+      }
+    }
+  }
+
   return (
     <>
       <div className="card-head">
@@ -57,6 +125,11 @@ export default function AgentPage() {
           <h1>{t("agent.title")}</h1>
           <p className="sub">{t("agent.sub")}</p>
         </div>
+        {turns.length > 0 ? (
+          <button className="btn btn-sm" onClick={newConversation}>
+            {t("agent.newChat")}
+          </button>
+        ) : null}
       </div>
 
       <div
