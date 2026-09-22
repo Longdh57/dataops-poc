@@ -8,16 +8,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
 import { useMe } from "@/app/lib/queries";
 
 const COOKIE = "dataops_as";
 
-export const DEV_USERS = [
-  { email: "longbloginfo@gmail.com", label: "Admin — toàn quyền" },
-  { email: "lead@dataops.test", label: "Team Lead — ký phát hành" },
-  { email: "analyst.tx@dataops.test", label: "Analyst — chỉ Texas" },
-  { email: "analyst.ca@dataops.test", label: "Analyst — chỉ California" },
-  { email: "sale@dataops.test", label: "Sale — CA + TX" },
+export const DEV_USERS: { email: string; label: MessageKey }[] = [
+  { email: "longbloginfo@gmail.com", label: "identity.user.admin" },
+  { email: "lead@dataops.test", label: "identity.user.lead" },
+  { email: "analyst.tx@dataops.test", label: "identity.user.analystTx" },
+  { email: "analyst.ca@dataops.test", label: "identity.user.analystCa" },
+  { email: "sale@dataops.test", label: "identity.user.sale" },
 ];
 
 function setCookie(email: string) {
@@ -30,6 +32,7 @@ function readCookie(): string | null {
 }
 
 export default function Identity() {
+  const { t } = useI18n();
   const { data: me } = useMe();
   const qc = useQueryClient();
   const router = useRouter();
@@ -62,7 +65,13 @@ export default function Identity() {
     qc.invalidateQueries();
   }
 
-  const scope = Array.isArray(me?.scope_states) ? me.scope_states.join(", ") : me?.scope_states;
+  // API tra ve chuoi "tat ca" khi pham vi khong bi gioi han — do la mot
+  // ma, khong phai cau tieng Viet, nen dich lai o day.
+  const scope = Array.isArray(me?.scope_states)
+    ? me.scope_states.join(", ")
+    : me?.scope_states
+      ? t("common.all")
+      : undefined;
 
   return (
     <div style={{ position: "relative" }}>
@@ -70,7 +79,7 @@ export default function Identity() {
         className="btn btn-sm"
         onClick={() => setOpen((v) => !v)}
         disabled={me?.require_iap !== false}
-        title={me?.require_iap ? "Danh tính đến từ IAP" : "Đổi danh tính (chế độ dev)"}
+        title={me?.require_iap ? t("identity.fromIap") : t("identity.switchDev")}
       >
         <span className="mono" style={{ fontSize: 11.5 }}>
           {me?.email ?? "…"}
@@ -85,7 +94,7 @@ export default function Identity() {
           style={{ position: "absolute", right: 0, top: 36, width: 280, zIndex: 30, padding: 9 }}
         >
           <div className="stat-label" style={{ padding: "2px 6px 7px" }}>
-            Đăng nhập với tư cách
+            {t("identity.signInAs")}
           </div>
           {DEV_USERS.map((u) => (
             <button
@@ -102,7 +111,7 @@ export default function Identity() {
               }}
               onClick={() => pick(u.email)}
             >
-              {u.label}
+              {t(u.label)}
             </button>
           ))}
         </div>

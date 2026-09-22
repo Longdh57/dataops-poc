@@ -332,6 +332,38 @@ duy nhat.
 | `/versions` | Ban da ky: ai ky, luc nao, da gui cho khach nao |
 | `/requests` | Sale xin file, theo doi trang thai, tai ve khi xong |
 
+### Song ngu vi / en
+
+Nut `VI | EN` o goc phai thanh tren. Khong them thu vien i18n nao — mot
+React context nho trong `apps/web/app/i18n` la du cho hai ngon ngu.
+
+| File | Lam gi |
+|---|---|
+| `app/i18n/vi.ts` | Tu dien goc, dong thoi la nguon khai bao `MessageKey` |
+| `app/i18n/en.ts` | Ban tieng Anh, kieu `Record<MessageKey, string>` |
+| `app/i18n/translate.ts` | `translate()` / `template()` / `split()` — khong dinh React |
+| `app/i18n/context.tsx` | `I18nProvider`, `useI18n()` (`t`, `tn`), `useFmt()` |
+| `app/i18n/server.ts` | `getLocale()` — doc cookie o phia server |
+
+Ba diem dang nho:
+
+- **Them chuoi moi thi them vao `vi.ts` truoc.** `en.ts` khai bao kieu
+  `Record<MessageKey, string>` nen thieu khoa la `npm run typecheck` do,
+  khong phai doi toi luc nguoi dung thay o trong.
+- **`t()` tra chuoi, `tn()` tra JSX.** Cau nao co `<b>` hay `<Link>` o
+  giua thi dung `tn("khoa", { cho: <b>…</b> })` — cho trong `{ten}` trong
+  template duoc thay bang node, khong phai noi chuoi.
+- **Ngon ngu nam trong cookie `dataops_lang`, doc o root layout.** HTML
+  tu server da dung thu tieng va `<html lang>` dung ngay tu dau — khong
+  chop mot nhip tieng Viet roi moi doi. Doi lai: moi route thanh dynamic
+  thay vi prerender tinh. Ung dung nay lay het du lieu qua fetch o client
+  nen khong mat gi.
+
+So va ngay thang di theo ngon ngu (`useFmt()` — `1.204.881` vs
+`1,204,881`). Con **noi dung tu API van giu nguyen**: tieu de ticket,
+phieu duyet, `detail` cua loi HTTP, va cau tra loi cua AI Agent —
+`SYSTEM_PROMPT` trong `apps/api/app/agent.py` van la tieng Viet.
+
 ### Trinh duyet khong goi thang API
 
 `dataops-api` khong public: chi service account cua web goi duoc bang OIDC
