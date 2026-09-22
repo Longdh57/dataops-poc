@@ -4,24 +4,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
 import { useGate, useOpenCount, useTickets } from "@/app/lib/queries";
 
 import FilterBar from "./filter-bar";
 import Identity from "./identity";
+import LangSwitch from "./lang-switch";
 import StatusStrip from "./status-strip";
 
-const TABS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/data", label: "Dữ liệu" },
-  { href: "/exceptions", label: "Vi phạm", badge: "vi_pham" },
-  { href: "/tickets", label: "Ticket", badge: "ticket" },
-  { href: "/versions", label: "Phiên bản" },
-  { href: "/requests", label: "Yêu cầu dữ liệu" },
-  { href: "/agent", label: "AI Agent" },
+const TABS: { href: string; label: MessageKey; badge?: string }[] = [
+  { href: "/", label: "nav.dashboard" },
+  { href: "/data", label: "nav.data" },
+  { href: "/exceptions", label: "nav.exceptions", badge: "vi_pham" },
+  { href: "/tickets", label: "nav.tickets", badge: "ticket" },
+  { href: "/versions", label: "nav.versions" },
+  { href: "/requests", label: "nav.requests" },
+  { href: "/agent", label: "nav.agent" },
 ];
 
 export default function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { t } = useI18n();
   const { data: gate } = useGate();
   const { data: count } = useOpenCount();
   const { data: tickets } = useTickets();
@@ -37,36 +41,37 @@ export default function Shell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
-            Data Operations
+            {t("shell.brand")}
             <span>dataops · poc</span>
           </div>
           <nav className="tabs">
-            {TABS.map((t) => (
+            {TABS.map((tab) => (
               <Link
-                key={t.href}
-                href={t.href}
+                key={tab.href}
+                href={tab.href}
                 className="tab"
-                data-on={pathname === t.href ? "1" : "0"}
+                data-on={pathname === tab.href ? "1" : "0"}
               >
-                {t.label}
-                {t.badge && badges[t.badge] ? (
+                {t(tab.label)}
+                {tab.badge && badges[tab.badge] ? (
                   <span
                     className="tab-badge"
-                    data-crit={t.badge === "ticket" && tickets?.blocking_open ? "1" : "0"}
+                    data-crit={tab.badge === "ticket" && tickets?.blocking_open ? "1" : "0"}
                     title={
-                      t.badge === "ticket" && tickets?.blocking_open
-                        ? `${tickets.blocking_open} ticket đang chặn phát hành`
+                      tab.badge === "ticket" && tickets?.blocking_open
+                        ? t("shell.badgeBlocking", { n: tickets.blocking_open })
                         : gate?.locked
-                          ? "cổng phát hành đang khoá"
+                          ? t("shell.badgeGateLocked")
                           : ""
                     }
                   >
-                    {badges[t.badge]}
+                    {badges[tab.badge]}
                   </span>
                 ) : null}
               </Link>
             ))}
           </nav>
+          <LangSwitch />
           <Identity />
         </div>
       </header>

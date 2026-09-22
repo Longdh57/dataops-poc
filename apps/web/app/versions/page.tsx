@@ -11,8 +11,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { useFmt, useI18n } from "@/app/i18n/context";
 import { gw, post } from "@/app/lib/api";
-import { dt, num } from "@/app/lib/format";
 import { useGate } from "@/app/lib/queries";
 import type { SignedVersion } from "@/app/lib/types";
 import { ErrBox, Loading, Modal } from "@/app/ui/bits";
@@ -20,6 +20,8 @@ import { ErrBox, Loading, Modal } from "@/app/ui/bits";
 type Res = { rows: SignedVersion[]; can_sign: boolean };
 
 export default function VersionsPage() {
+  const { t, tn } = useI18n();
+  const { dt, num } = useFmt();
   const qc = useQueryClient();
   const { data: gate } = useGate();
   const q = useQuery({ queryKey: ["versions"], queryFn: () => gw<Res>("/versions") });
@@ -49,26 +51,23 @@ export default function VersionsPage() {
     <>
       <div className="card-head">
         <div>
-          <h1>Phiên bản đã ký</h1>
-          <p className="sub">
-            Ký là đóng băng một lần nạp làm bản phát hành. File gửi khách chỉ xuất từ bản đã ký,
-            và mang theo đúng món nợ ghi ở đây.
-          </p>
+          <h1>{t("ver.title")}</h1>
+          <p className="sub">{t("ver.sub")}</p>
         </div>
       </div>
 
       {q.data?.can_sign ? (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-head">
-            <h2>Ký bản mới</h2>
+            <h2>{t("ver.signNew")}</h2>
             {locked ? (
               <span className="pill pill-crit">
-                {stale ? "QC chưa kiểm lần nạp này" : `${chan.length} ticket đang chặn`}
+                {stale ? t("ver.pill.stale") : t("ver.pill.blocking", { n: chan.length })}
               </span>
             ) : canNo ? (
-              <span className="pill pill-warn">ký được, nhưng còn nợ</span>
+              <span className="pill pill-warn">{t("ver.pill.debt")}</span>
             ) : (
-              <span className="pill pill-good">sạch</span>
+              <span className="pill pill-good">{t("ver.pill.clean")}</span>
             )}
           </div>
 
@@ -78,24 +77,21 @@ export default function VersionsPage() {
           {locked ? (
             <div className="banner banner-crit" style={{ marginBottom: 12, display: "block" }}>
               <div className="banner-title">
-                {stale ? "Danh sách vi phạm đang hiển thị là của lần nạp trước" : "Bị chặn bởi ticket"}
+                {stale ? t("ver.blockedStaleTitle") : t("ver.blockedTicketTitle")}
               </div>
               <div className="banner-body">
                 {stale ? (
-                  <>
-                    Lần nạp hiện tại là <span className="mono">{gate?.run_id}</span> nhưng QC mới
-                    kiểm tới <span className="mono">{gate?.qc_run_id ?? "—"}</span>. Ký lúc này là
-                    ký một thứ chưa ai nhìn thấy, nên máy chủ từ chối. QC chạy mỗi 5 phút.
-                  </>
+                  tn("ver.blockedStaleBody", {
+                    runId: <span className="mono">{gate?.run_id}</span>,
+                    qcRunId: <span className="mono">{gate?.qc_run_id ?? "—"}</span>,
+                  })
                 ) : (
                   <>
-                    Đây là lỗi đã xác nhận bằng bằng chứng, không phải nghi ngờ của máy — nên
-                    không duyệt cho qua được. Sửa ở nguồn rồi chờ QC xác minh, hoặc gỡ chặn từng
-                    ticket ở trang Ticket.
+                    {t("ver.blockedTicketBody")}
                     <ul style={{ margin: "6px 0 0 18px" }}>
-                      {chan.slice(0, 8).map((t) => (
-                        <li key={t.id}>
-                          <span className="mono">#{t.id}</span> · {t.khoa} — {t.title}
+                      {chan.slice(0, 8).map((ticket) => (
+                        <li key={ticket.id}>
+                          <span className="mono">#{ticket.id}</span> · {ticket.khoa} — {ticket.title}
                         </li>
                       ))}
                     </ul>
@@ -108,7 +104,7 @@ export default function VersionsPage() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <input
               type="text"
-              placeholder="Tên bản, ví dụ: Bao cao Q3 2026"
+              placeholder={t("ver.labelPlaceholder")}
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               style={{ flex: 1, minWidth: 260 }}
@@ -119,19 +115,17 @@ export default function VersionsPage() {
           {canNo && !locked ? (
             <div style={{ marginTop: 10 }}>
               <label htmlFor="note" className="stat-label" style={{ display: "block", marginBottom: 4 }}>
-                Phiếu duyệt — bắt buộc
+                {t("ver.approvalLabel")}
               </label>
               <textarea
                 id="note"
                 rows={3}
-                placeholder="Vì sao vẫn ký dù còn nợ. Ví dụ: 3 ô dưới ngưỡng là số thật của bang nhỏ, đã đối chiếu SSA. Ticket #123 không ảnh hưởng bang đang bán."
+                placeholder={t("ver.approvalPlaceholder")}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 style={{ width: "100%" }}
               />
-              <p className="sub" style={{ marginTop: 4 }}>
-                Câu này đi theo bản ký vĩnh viễn và in vào file gửi khách. Tên bạn nằm cạnh nó.
-              </p>
+              <p className="sub" style={{ marginTop: 4 }}>{t("ver.approvalHint")}</p>
             </div>
           ) : null}
 
@@ -141,7 +135,11 @@ export default function VersionsPage() {
               disabled={locked || label.trim().length < 3 || !duNote || sign.isPending}
               onClick={() => sign.mutate()}
             >
-              {sign.isPending ? "Đang ký…" : canNo ? "Ký kèm phiếu duyệt" : "Ký phát hành"}
+              {sign.isPending
+                ? t("ver.signing")
+                : canNo
+                  ? t("ver.signWithApproval")
+                  : t("ver.sign")}
             </button>
           </div>
 
@@ -153,18 +151,18 @@ export default function VersionsPage() {
 
       <div className="card card-pad0">
         {q.isPending ? (
-          <div style={{ padding: 14 }}><Loading what="phiên bản" /></div>
+          <div style={{ padding: 14 }}><Loading what={t("ver.loading")} /></div>
         ) : q.data?.rows.length ? (
           <table className="t">
             <thead>
               <tr>
-                <th>Bản</th>
-                <th>Lần nạp</th>
-                <th className="num">Số dòng</th>
-                <th>Nợ lúc ký</th>
-                <th>Người ký</th>
-                <th>Lúc</th>
-                <th>Đã gửi cho</th>
+                <th>{t("ver.col.version")}</th>
+                <th>{t("ver.col.run")}</th>
+                <th className="num">{t("ver.col.rows")}</th>
+                <th>{t("ver.col.debt")}</th>
+                <th>{t("ver.col.signedBy")}</th>
+                <th>{t("ver.col.at")}</th>
+                <th>{t("ver.col.sentTo")}</th>
                 <th />
               </tr>
             </thead>
@@ -175,11 +173,11 @@ export default function VersionsPage() {
                     {v.label}
                     {v.checksum ? (
                       <div className="tone-muted mono" style={{ fontSize: 10.5, fontWeight: 400 }}>
-                        vân tay {v.checksum.slice(0, 12)}
+                        {t("ver.fingerprint", { hash: v.checksum.slice(0, 12) })}
                       </div>
                     ) : (
                       <div className="tone-muted" style={{ fontSize: 10.5, fontWeight: 400 }}>
-                        không có vân tay — ký trước P6
+                        {t("ver.noFingerprint")}
                       </div>
                     )}
                   </td>
@@ -187,9 +185,9 @@ export default function VersionsPage() {
                     {v.run_id}
                     <div className="tone-muted" style={{ fontSize: 11 }}>
                       {v.source_run_ids?.length
-                        ? `${v.source_run_ids.length} lần nạp dữ liệu`
-                        : "không ghi lại lần nạp — không xuất file được"}
-                      {v.rules_version ? ` · luật v${v.rules_version}` : ""}
+                        ? t("ver.sourceRuns", { n: v.source_run_ids.length })
+                        : t("ver.noSourceRuns")}
+                      {v.rules_version ? t("ver.rulesVersion", { v: v.rules_version }) : ""}
                     </div>
                   </td>
                   <td className="num">{num(v.row_count)}</td>
@@ -209,12 +207,12 @@ export default function VersionsPage() {
                         </div>
                       ))
                     ) : (
-                      <span className="tone-muted">chưa gửi ai</span>
+                      <span className="tone-muted">{t("ver.notSent")}</span>
                     )}
                   </td>
                   <td>
                     <button className="btn btn-sm" onClick={() => setSending(v)}>
-                      Ghi nhận đã gửi
+                      {t("ver.recordSent")}
                     </button>
                   </td>
                 </tr>
@@ -222,9 +220,7 @@ export default function VersionsPage() {
             </tbody>
           </table>
         ) : (
-          <p className="spin" style={{ padding: 14 }}>
-            Chưa có bản nào được ký.
-          </p>
+          <p className="spin" style={{ padding: 14 }}>{t("ver.empty")}</p>
         )}
       </div>
 
@@ -236,6 +232,9 @@ export default function VersionsPage() {
 // --------------------------------------------------------- mon no truoc ky
 
 function Debt({ gate }: { gate: ReturnType<typeof useGate>["data"] }) {
+  const { t, tn } = useI18n();
+  const { num } = useFmt();
+
   if (!gate) return null;
   const v = gate.violations;
   const truoc = gate.last_signed;
@@ -244,20 +243,22 @@ function Debt({ gate }: { gate: ReturnType<typeof useGate>["data"] }) {
     <div style={{ marginBottom: 12 }}>
       <div className="compare" style={{ marginBottom: 10 }}>
         <div>
-          <div className="stat-label">Vi phạm luật ở lần nạp này</div>
+          <div className="stat-label">{t("ver.debt.violations")}</div>
           <div className="big">{num(v.total)}</div>
           <div className="stat-note">
-            {v.by_severity.critical ? `${num(v.by_severity.critical)} nghiêm trọng · ` : ""}
-            {v.by_severity.warning ? `${num(v.by_severity.warning)} cảnh báo` : "không có cảnh báo"}
+            {v.by_severity.critical ? t("ver.debt.critical", { n: num(v.by_severity.critical) }) : ""}
+            {v.by_severity.warning
+              ? t("ver.debt.warning", { n: num(v.by_severity.warning) })
+              : t("ver.debt.noWarning")}
           </div>
         </div>
         <div>
-          <div className="stat-label">Ticket chưa đóng</div>
+          <div className="stat-label">{t("ver.debt.openTickets")}</div>
           <div className="big">{num(gate.open_tickets)}</div>
           <div className="stat-note">
             {gate.blocking_tickets.length
-              ? `${gate.blocking_tickets.length} trong số đó đang chặn`
-              : "không cái nào chặn phát hành"}
+              ? t("ver.debt.someBlocking", { n: gate.blocking_tickets.length })
+              : t("ver.debt.noneBlocking")}
           </div>
         </div>
       </div>
@@ -280,13 +281,13 @@ function Debt({ gate }: { gate: ReturnType<typeof useGate>["data"] }) {
           lan nap, nen cac ban ky van doc lap voi nhau. */}
       {truoc ? (
         <p className="sub">
-          So với bản ký gần nhất (<b>{truoc.label}</b>):{" "}
+          {tn("ver.debt.compare", { label: <b>{truoc.label}</b> })}
           {truoc.violations_fingerprint && truoc.violations_fingerprint === v.fingerprint ? (
-            <>đúng cùng một tập vi phạm, không có gì mới.</>
+            <>{t("ver.debt.same")}</>
           ) : truoc.violations_fingerprint ? (
-            <b className="tone-crit">tập vi phạm đã khác — có cái mới hoặc cái cũ đã hết.</b>
+            <b className="tone-crit">{t("ver.debt.different")}</b>
           ) : (
-            <>bản trước không ghi vân tay nên không so được.</>
+            <>{t("ver.debt.noFingerprint")}</>
           )}
         </p>
       ) : null}
@@ -295,18 +296,20 @@ function Debt({ gate }: { gate: ReturnType<typeof useGate>["data"] }) {
 }
 
 function No({ version }: { version: SignedVersion }) {
+  const { t } = useI18n();
+  const { num } = useFmt();
   const vi = version.violations ?? {};
   const tk = version.open_tickets ?? [];
   const tong = Object.values(vi).reduce((a, b) => a + b, 0);
 
   if (!tong && !tk.length) {
-    return <span className="pill pill-good">sạch</span>;
+    return <span className="pill pill-good">{t("ver.pill.clean")}</span>;
   }
   return (
     <>
       {tong ? (
         <div>
-          <span className="pill pill-warn">{num(tong)} vi phạm</span>{" "}
+          <span className="pill pill-warn">{t("ver.no.violations", { n: num(tong) })}</span>{" "}
           <span className="tone-muted" style={{ fontSize: 11 }}>
             {Object.keys(vi).join(", ")}
           </span>
@@ -314,7 +317,9 @@ function No({ version }: { version: SignedVersion }) {
       ) : null}
       {tk.length ? (
         <div style={{ marginTop: 3 }}>
-          <span className="pill pill-accent">ticket {tk.map((t) => `#${t}`).join(", ")}</span>
+          <span className="pill pill-accent">
+            {t("ver.no.tickets", { list: tk.map((id) => `#${id}`).join(", ") })}
+          </span>
         </div>
       ) : null}
       {version.approval_note ? (
@@ -327,6 +332,7 @@ function No({ version }: { version: SignedVersion }) {
 }
 
 function SendModal({ version, onClose }: { version: SignedVersion; onClose: () => void }) {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [customer, setCustomer] = useState("");
   const m = useMutation({
@@ -338,26 +344,24 @@ function SendModal({ version, onClose }: { version: SignedVersion; onClose: () =
   });
 
   return (
-    <Modal title={`Ghi nhận đã gửi — ${version.label}`} onClose={onClose}>
-      <p className="sub" style={{ marginBottom: 10 }}>
-        Ghi lại đã gửi bản nào cho khách nào ngày nào. Dòng này không xoá được.
-      </p>
+    <Modal title={t("ver.send.title", { label: version.label })} onClose={onClose}>
+      <p className="sub" style={{ marginBottom: 10 }}>{t("ver.send.body")}</p>
       <input
         type="text"
-        placeholder="Tên khách hàng"
+        placeholder={t("ver.send.customer")}
         value={customer}
         onChange={(e) => setCustomer(e.target.value)}
         style={{ width: "100%", marginBottom: 10 }}
       />
       <ErrBox error={m.error} />
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-        <button className="btn" onClick={onClose}>Thôi</button>
+        <button className="btn" onClick={onClose}>{t("common.cancel")}</button>
         <button
           className="btn btn-primary"
           disabled={customer.trim().length < 2 || m.isPending}
           onClick={() => m.mutate()}
         >
-          Ghi nhận
+          {t("ver.send.submit")}
         </button>
       </div>
     </Modal>

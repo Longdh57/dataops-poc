@@ -99,6 +99,7 @@ module "storage" {
   labels     = local.labels
 
   writers = [local.sa.jobs]
+  readers = [local.sa.api]
 }
 
 module "monitoring" {

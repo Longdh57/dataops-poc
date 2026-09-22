@@ -12,9 +12,13 @@ set -uo pipefail
 
 PROJECT="${1:-dataops-poc-2026}"
 DATASET="${2:-dataops_src}"
+REGION="${3:-asia-southeast1}"
+# Dataset analytics KHONG nam trong tfvars: gia tri lay tu default cua
+# module data (bien analytics_dataset_id). Doi thi phai doi ca hai noi.
+ANALYTICS="${4:-dataops_analytics}"
 cd "$(dirname "$0")/../infra" || exit 1
 
-echo "Project: $PROJECT · dataset: $DATASET"
+echo "Project: $PROJECT · dataset: $DATASET / $ANALYTICS · region: $REGION"
 echo
 
 for key in api web jobs; do
@@ -38,6 +42,42 @@ echo
 echo "--- dataset BigQuery ${DATASET}"
 terraform import "module.data.google_bigquery_dataset.src" \
   "projects/${PROJECT}/datasets/${DATASET}" 2>&1 | tail -2
+
+# Dataset analytics cung BAT BUOC phai import, cung ly do voi Export Job:
+# no da ton tai that tu P7, tao lai la loi 409 va apply dung giua chung.
+echo
+echo "--- dataset BigQuery ${ANALYTICS}"
+terraform import "module.data.google_bigquery_dataset.analytics" \
+  "projects/${PROJECT}/datasets/${ANALYTICS}" 2>&1 | tail -2
+
+# --- Export Job va cac binding di kem, tao tay bang gcloud khi P5 chua apply ---
+#
+# Job BAT BUOC phai import: tao lai mot job da ton tai la loi 409, apply
+# se dung giua chung. Ba binding IAM thi khong bat buoc — google_*_iam_member
+# la loai khong doc quyen (non-authoritative), them mot member da co san
+# chi la thao tac rong. Import van hon: de state noi dung su that.
+
+API_SA="dataops-api@${PROJECT}.iam.gserviceaccount.com"
+
+echo
+echo "--- Cloud Run Job dataops-export"
+terraform import "module.runtime.google_cloud_run_v2_job.export" \
+  "projects/${PROJECT}/locations/${REGION}/jobs/dataops-export" 2>&1 | tail -2
+
+echo
+echo "--- quyen API chay Export Job kem overrides"
+terraform import "module.runtime.google_cloud_run_v2_job_iam_member.api_invoke_export" \
+  "projects/${PROJECT}/locations/${REGION}/jobs/dataops-export roles/run.jobsExecutorWithOverrides serviceAccount:${API_SA}" 2>&1 | tail -2
+
+echo
+echo "--- quyen API tu ky URL (IAM SignBlob)"
+terraform import "module.runtime.google_service_account_iam_member.api_self_sign" \
+  "projects/${PROJECT}/serviceAccounts/${API_SA} roles/iam.serviceAccountTokenCreator serviceAccount:${API_SA}" 2>&1 | tail -2
+
+echo
+echo "--- quyen API doc bucket staging"
+terraform import "module.storage.google_storage_bucket_iam_member.readers[\"${API_SA}\"]" \
+  "b/${PROJECT}-staging roles/storage.objectViewer serviceAccount:${API_SA}" 2>&1 | tail -2
 
 cat <<'NOTE'
 

@@ -8,13 +8,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
+import { useFmt, useI18n } from "@/app/i18n/context";
 import { gw, post } from "@/app/lib/api";
-import { dt, num } from "@/app/lib/format";
 import { useGate } from "@/app/lib/queries";
 import type { ExportCreated, ExportJob } from "@/app/lib/types";
 import { ErrBox, Loading, Status } from "@/app/ui/bits";
 
 export default function RequestsPage() {
+  const { t } = useI18n();
+  const { dt, num } = useFmt();
   const qc = useQueryClient();
   const { data: gate } = useGate();
   const [format, setFormat] = useState("csv");
@@ -39,40 +41,33 @@ export default function RequestsPage() {
     <>
       <div className="card-head">
         <div>
-          <h1>Yêu cầu dữ liệu</h1>
-          <p className="sub">
-            File gửi khách xuất thẳng từ BigQuery — nguồn sự thật — nhưng chỉ lấy những lần nạp
-            nằm trong bản đã ký, và chỉ những bang trong phạm vi của bạn. Các ô sửa tay được áp
-            lên trên, thị phần tính lại cho nhóm bị sửa.
-          </p>
+          <h1>{t("req.title")}</h1>
+          <p className="sub">{t("req.sub")}</p>
         </div>
       </div>
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
-          <h2>Xin một bản file</h2>
+          <h2>{t("req.askTitle")}</h2>
           {locked ? (
-            <span className="pill pill-crit">cổng đang khoá</span>
+            <span className="pill pill-crit">{t("req.gateLocked")}</span>
           ) : (
-            <span className="pill pill-good">cổng sẵn sàng</span>
+            <span className="pill pill-good">{t("req.gateReady")}</span>
           )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <div className="field">
-            <label htmlFor="fm">Định dạng</label>
+            <label htmlFor="fm">{t("req.format")}</label>
             <select id="fm" value={format} onChange={(e) => setFormat(e.target.value)}>
               <option value="csv">CSV</option>
               <option value="xlsx">Excel</option>
             </select>
           </div>
           <button className="btn btn-primary" disabled={locked || ask.isPending} onClick={() => ask.mutate()}>
-            {ask.isPending ? "Đang gửi…" : "Gửi yêu cầu"}
+            {ask.isPending ? t("common.sending") : t("req.submit")}
           </button>
           {locked ? (
-            <p className="sub" style={{ flex: 1, minWidth: 240 }}>
-              Cổng phát hành đang khoá nên không xin file được. Máy chủ trả 409 kể cả khi bạn gọi
-              thẳng API.
-            </p>
+            <p className="sub" style={{ flex: 1, minWidth: 240 }}>{t("req.lockedNote")}</p>
           ) : null}
         </div>
         <div style={{ marginTop: 9 }}>
@@ -82,13 +77,17 @@ export default function RequestsPage() {
               <div>
                 <div className="banner-title">
                   {ask.data.triggered
-                    ? `Đã nhận yêu cầu #${ask.data.job_id} và kích hoạt Export Job`
-                    : `Đã xếp hàng yêu cầu #${ask.data.job_id}`}
+                    ? t("req.created.triggered", { id: ask.data.job_id })
+                    : t("req.created.queued", { id: ask.data.job_id })}
                 </div>
                 <div className="banner-body">
-                  Xuất từ bản ký <b>{ask.data.signed_version.label}</b>
-                  {ask.data.scope ? ` · phạm vi ${ask.data.scope.join(", ")}` : " · toàn bộ phạm vi"}
-                  {ask.data.triggered ? "" : ` — ${ask.data.note}`}
+                  {t("req.created.body", {
+                    label: ask.data.signed_version.label,
+                    scope: ask.data.scope
+                      ? t("req.created.scope", { states: ask.data.scope.join(", ") })
+                      : t("req.created.scopeAll"),
+                    note: ask.data.triggered ? "" : t("req.created.note", { note: ask.data.note }),
+                  })}
                 </div>
               </div>
             </div>
@@ -98,19 +97,19 @@ export default function RequestsPage() {
 
       <div className="card card-pad0">
         {q.isPending ? (
-          <div style={{ padding: 14 }}><Loading what="yêu cầu" /></div>
+          <div style={{ padding: 14 }}><Loading what={t("req.loading")} /></div>
         ) : q.data?.rows.length ? (
           <table className="t">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Trạng thái</th>
-                <th>Bản ký</th>
-                <th>Định dạng</th>
-                <th>Phạm vi</th>
-                <th className="num">Số dòng</th>
-                <th>Người yêu cầu</th>
-                <th>Lúc gửi</th>
+                <th>{t("req.col.status")}</th>
+                <th>{t("req.col.signed")}</th>
+                <th>{t("req.col.format")}</th>
+                <th>{t("req.col.scope")}</th>
+                <th className="num">{t("req.col.rows")}</th>
+                <th>{t("req.col.requestedBy")}</th>
+                <th>{t("req.col.at")}</th>
                 <th />
               </tr>
             </thead>
@@ -132,7 +131,7 @@ export default function RequestsPage() {
                   </td>
                   <td><span className="pill">{j.format}</span></td>
                   <td className="mono" style={{ fontSize: 11.5 }}>
-                    {j.scope_states?.length ? j.scope_states.join(", ") : "tất cả"}
+                    {j.scope_states?.length ? j.scope_states.join(", ") : t("common.all")}
                   </td>
                   <td className="num">{j.row_count ? num(j.row_count) : "—"}</td>
                   <td>{j.requested_by}</td>
@@ -143,9 +142,7 @@ export default function RequestsPage() {
             </tbody>
           </table>
         ) : (
-          <p className="spin" style={{ padding: 14 }}>
-            Chưa có yêu cầu nào.
-          </p>
+          <p className="spin" style={{ padding: 14 }}>{t("req.empty")}</p>
         )}
       </div>
     </>
@@ -153,6 +150,7 @@ export default function RequestsPage() {
 }
 
 function Download({ job, locked }: { job: ExportJob; locked: boolean }) {
+  const { t } = useI18n();
   const m = useMutation({
     mutationFn: () => gw<{ url: string }>(`/exports/${job.id}/download`),
     onSuccess: (d) => window.open(d.url, "_blank", "noopener"),
@@ -162,7 +160,7 @@ function Download({ job, locked }: { job: ExportJob; locked: boolean }) {
     return <span className="tone-crit" style={{ fontSize: 12 }}>{job.error}</span>;
   }
   if (job.status !== "done") {
-    return <span className="tone-muted" style={{ fontSize: 12 }}>đang chờ job chạy</span>;
+    return <span className="tone-muted" style={{ fontSize: 12 }}>{t("req.waiting")}</span>;
   }
   return (
     <>
@@ -170,9 +168,9 @@ function Download({ job, locked }: { job: ExportJob; locked: boolean }) {
         className="btn btn-sm btn-primary"
         disabled={locked || m.isPending}
         onClick={() => m.mutate()}
-        title={locked ? "Cổng phát hành đang khoá" : "Link ký sẵn, hết hạn sau 15 phút"}
+        title={locked ? t("req.downloadTitleLocked") : t("req.downloadTitle")}
       >
-        {m.isPending ? "Đang ký link…" : "Tải file"}
+        {m.isPending ? t("req.downloadSigning") : t("req.download")}
       </button>
       {m.error ? <div style={{ marginTop: 6 }}><ErrBox error={m.error} /></div> : null}
     </>

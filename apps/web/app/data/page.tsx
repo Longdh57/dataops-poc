@@ -8,31 +8,35 @@
 // AG Grid ao hoa phan hien thi. Cuon den cuoi thi tu goi slice sau.
 //
 // He qua phai noi ro voi nguoi dung: bam tieu de cot chi sap xep trong so
-// dong DA TAI. Muon sap xep toan bo 1,2 trieu dong thi doi o "Sắp xếp toàn
-// bộ" — cai do chay o server va nap lai tu dau.
+// dong DA TAI. Muon sap xep toan bo 1,2 trieu dong thi doi o "Sap xep toan
+// bo" — cai do chay o server va nap lai tu dau.
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { BodyScrollEndEvent, ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useCallback, useMemo, useState } from "react";
 
+import { useFmt, useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
 import { gw, qs } from "@/app/lib/api";
 import { useFilters } from "@/app/lib/filters";
-import { num, pct } from "@/app/lib/format";
 import type { Fact, FactsPage } from "@/app/lib/types";
 import { ErrBox, Loading } from "@/app/ui/bits";
-import { gridTheme } from "@/app/ui/grid";
+import { gridTheme, useGridLocale } from "@/app/ui/grid";
 
 const PAGE = 500;
 
-const SORTS = [
-  { v: "deposit", label: "deposit" },
-  { v: "deposit_share", label: "thị phần" },
-  { v: "year", label: "năm" },
-  { v: "institution", label: "tổ chức" },
+const SORTS: { v: string; label: MessageKey }[] = [
+  { v: "deposit", label: "data.sort.deposit" },
+  { v: "deposit_share", label: "data.sort.share" },
+  { v: "year", label: "data.sort.year" },
+  { v: "institution", label: "data.sort.institution" },
 ];
 
 export default function DataPage() {
+  const { t, tn } = useI18n();
+  const { num, pct } = useFmt();
+  const gridLocale = useGridLocale();
   const { filters } = useFilters();
   const [sort, setSort] = useState("deposit");
   const [desc, setDesc] = useState(true);
@@ -61,14 +65,17 @@ export default function DataPage() {
 
   const cols = useMemo<ColDef<Fact>[]>(
     () => [
-      { field: "state", headerName: "Bang", width: 92, cellClass: "cell-key" },
-      { field: "year", headerName: "Năm", width: 88, cellClass: "cell-mono" },
-      { field: "institution", headerName: "Tổ chức", flex: 1, minWidth: 200, cellClass: "cell-strong" },
+      { field: "state", headerName: t("data.col.state"), width: 92, cellClass: "cell-key" },
+      { field: "year", headerName: t("data.col.year"), width: 88, cellClass: "cell-mono" },
       {
-        // So o day LUON la so cua nguon. Nhan "có ticket" chi noi rang o
+        field: "institution", headerName: t("data.col.institution"), flex: 1, minWidth: 200,
+        cellClass: "cell-strong",
+      },
+      {
+        // So o day LUON la so cua nguon. Nhan "co ticket" chi noi rang o
         // nay dang cho team Data sua — no khong thay so, vi ung dung nay
         // khong sua so.
-        field: "deposit", headerName: "Deposit", width: 170, type: "rightAligned",
+        field: "deposit", headerName: t("data.col.deposit"), width: 170, type: "rightAligned",
         valueFormatter: (p) => num(p.value as number),
         cellRenderer: (p: { data?: Fact; value: number }) =>
           p.data?.ticket_id ? (
@@ -76,9 +83,12 @@ export default function DataPage() {
               <span
                 className={p.data.ticket_blocking ? "pill pill-crit" : "pill pill-warn"}
                 style={{ marginRight: 7 }}
-                title={`ticket #${p.data.ticket_id} — nguồn phải sửa thành ${p.data.ticket_expected}`}
+                title={t("data.ticketTitle", {
+                  id: p.data.ticket_id,
+                  expected: p.data.ticket_expected,
+                })}
               >
-                ticket
+                {t("data.ticketPill")}
               </span>
               {num(p.value)}
             </span>
@@ -87,22 +97,22 @@ export default function DataPage() {
           ),
       },
       {
-        field: "deposit_share", headerName: "Thị phần", width: 120, type: "rightAligned",
+        field: "deposit_share", headerName: t("data.col.share"), width: 120, type: "rightAligned",
         valueFormatter: (p) => pct(p.value as number),
         cellClass: "cell-code",
       },
       {
-        field: "prev_deposit", headerName: "Năm trước", width: 120, type: "rightAligned",
+        field: "prev_deposit", headerName: t("data.col.prev"), width: 120, type: "rightAligned",
         valueFormatter: (p) => num(p.value as number),
         cellClass: "cell-dim",
       },
       {
-        field: "ticket_expected", headerName: "Ticket yêu cầu", width: 150,
+        field: "ticket_expected", headerName: t("data.col.ticketExpected"), width: 150,
         type: "rightAligned", cellClass: "cell-dim",
         valueFormatter: (p) => (p.value ? String(p.value) : ""),
       },
     ],
-    [],
+    [t, num, pct],
   );
 
   if (q.error) return <ErrBox error={q.error} />;
@@ -111,33 +121,35 @@ export default function DataPage() {
     <>
       <div className="card-head">
         <div>
-          <h1>Dữ liệu trong phạm vi</h1>
+          <h1>{t("data.title")}</h1>
           <p className="sub">
-            Phạm vi áp ở tầng server — đổi tham số trên URL không lấy được dữ liệu ngoài phạm vi
-            được gán. Đã tải <b>{num(rows.length)}</b> dòng
-            {q.hasNextPage ? ", cuộn xuống để nạp tiếp" : " — hết dữ liệu"}.
+            {tn("data.sub", {
+              n: <b>{num(rows.length)}</b>,
+              more: q.hasNextPage ? t("data.subMore") : t("data.subEnd"),
+            })}
           </p>
         </div>
         <div className="field">
-          <label htmlFor="sort">Sắp xếp toàn bộ</label>
+          <label htmlFor="sort">{t("data.sortAll")}</label>
           <select id="sort" value={sort} onChange={(e) => setSort(e.target.value)}>
             {SORTS.map((s) => (
-              <option key={s.v} value={s.v}>{s.label}</option>
+              <option key={s.v} value={s.v}>{t(s.label)}</option>
             ))}
           </select>
           <button className="btn btn-sm" onClick={() => setDesc((d) => !d)}>
-            {desc ? "giảm dần ↓" : "tăng dần ↑"}
+            {desc ? t("data.desc") : t("data.asc")}
           </button>
         </div>
       </div>
 
       {q.isPending ? (
-        <Loading what="500 dòng đầu" />
+        <Loading what={t("data.loading")} />
       ) : (
         <>
           <div style={{ height: "calc(100vh - 280px)", minHeight: 420 }}>
             <AgGridReact<Fact>
               theme={gridTheme}
+              localeText={gridLocale}
               rowData={rows}
               columnDefs={cols}
               defaultColDef={{ sortable: true, resizable: true, suppressHeaderMenuButton: true }}
@@ -155,14 +167,16 @@ export default function DataPage() {
               onClick={() => q.fetchNextPage()}
             >
               {q.isFetchingNextPage
-                ? "Đang nạp…"
+                ? t("data.loadingMore")
                 : q.hasNextPage
-                  ? `Tải thêm ${PAGE} dòng`
-                  : "Đã tải hết"}
+                  ? t("data.loadMore", { n: PAGE })
+                  : t("data.allLoaded")}
             </button>
             <p className="sub" style={{ flex: 1, minWidth: 260 }}>
-              Bấm tiêu đề cột chỉ sắp xếp trong {num(rows.length)} dòng đã tải. Muốn sắp xếp toàn
-              bộ thì đổi ô <b>Sắp xếp toàn bộ</b> ở trên — lần đó chạy ở server.
+              {tn("data.sortNote", {
+                n: num(rows.length),
+                field: <b>{t("data.sortAll")}</b>,
+              })}
             </p>
           </div>
         </>

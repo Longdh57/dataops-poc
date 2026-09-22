@@ -3,21 +3,30 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 
 import "./globals.css";
+import { getLocale } from "./i18n/server";
+import { translate } from "./i18n/translate";
 import Providers from "./providers";
 import Shell from "./ui/shell";
 
-export const metadata: Metadata = {
-  title: "Data Operations WebApp",
-  description: "Noi xem so, sua so va chan so sai di ra ngoai",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: translate(locale, "meta.title"),
+    description: translate(locale, "meta.description"),
+  };
+}
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // Ngon ngu doc tu cookie ngay o day chu khong doi client: HTML dau tien
+  // da dung thu tieng roi, va <html lang> dung cho trinh doc man hinh.
+  const locale = await getLocale();
+
   return (
-    <html lang="vi">
+    <html lang={locale}>
       <body>
-        <Providers>
+        <Providers locale={locale}>
           {/* Shell doc bo loc tu URL nen phai nam trong Suspense. */}
-          <Suspense fallback={<div className="page">Đang tải…</div>}>
+          <Suspense fallback={<div className="page">{translate(locale, "common.loadingShort")}</div>}>
             <Shell>{children}</Shell>
           </Suspense>
         </Providers>

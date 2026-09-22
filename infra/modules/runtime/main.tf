@@ -529,20 +529,45 @@ resource "google_cloud_run_v2_job" "export" {
 
 # API la thu kich hoat Export Job va Sync Job, nen no phai duoc phep chay
 # hai job do. Day la quyen duy nhat API co tren Cloud Run.
+#
+# KHONG phai run.invoker. API goi Export Job kem overrides de truyen
+# EXPORT_JOB_ID, ma run.invoker chi co run.jobs.run — thieu dung cai
+# run.jobs.runWithOverrides, nen Cloud Run tra 403 va yeu cau nam mai
+# trong hang doi. jobsExecutorWithOverrides la role hep nhat co ca hai:
+#
+#   gcloud iam roles describe roles/run.jobsExecutorWithOverrides
+#   -> run.executions.cancel, run.jobs.run, run.jobs.runWithOverrides
 resource "google_cloud_run_v2_job_iam_member" "api_invoke_export" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_job.export.name
-  role     = "roles/run.invoker"
+  role     = "roles/run.jobsExecutorWithOverrides"
   member   = "serviceAccount:${var.api_service_account}"
 }
 
+# Sync Job thi van la run.invoker: API goi no KHONG kem overrides
+# (app/main.py, run_job(settings.sync_job_name) khong truyen env), nen
+# them quyen o day chi la cap thua.
 resource "google_cloud_run_v2_job_iam_member" "api_invoke_sync" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_job.sync.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${var.api_service_account}"
+}
+
+# API phai ky duoc URL tai file. Service account tren Cloud Run khong giu
+# private key nen khong ky offline duoc — no goi IAM SignBlob de tu ky cho
+# chinh minh (app/main.py, signed_url). Muon vay thi phai duoc lam
+# tokenCreator TREN CHINH NO. Thieu binding nay thi job sinh file xong
+# nhung nut tai ve tra 503 "chua ky duoc URL".
+#
+# Binding nay nam o module.runtime chu khong phai module.iam: module.iam
+# la noi TAO service account, doi chieu nguoc lai se thanh vong phu thuoc.
+resource "google_service_account_iam_member" "api_self_sign" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.api_service_account}"
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${var.api_service_account}"
 }
 
 # --- Seed: nguoi dung thu nghiem va du lieu demo ---

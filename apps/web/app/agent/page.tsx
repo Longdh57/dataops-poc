@@ -12,6 +12,8 @@
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 
+import { useI18n } from "@/app/i18n/context";
+import type { MessageKey } from "@/app/i18n/translate";
 import { post } from "@/app/lib/api";
 import { ErrBox } from "@/app/ui/bits";
 
@@ -22,13 +24,10 @@ type ChatResponse = {
   session_id: string;
 };
 
-const GOI_Y = [
-  "Tình hình QC hôm nay sao rồi?",
-  "Tôi nên xử lý cái gì trước?",
-  "Có ticket nào đang chặn phát hành không?",
-];
+const GOI_Y: MessageKey[] = ["agent.suggest1", "agent.suggest2", "agent.suggest3"];
 
 export default function AgentPage() {
+  const { t } = useI18n();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -55,11 +54,8 @@ export default function AgentPage() {
     <>
       <div className="card-head">
         <div>
-          <h1>AI Agent — hỏi về vi phạm &amp; ticket</h1>
-          <p className="sub">
-            Agent chỉ đọc dữ liệu QC đang có trong phạm vi của bạn và trả lời có căn cứ — nó không
-            đóng ticket, không ký bản, không sửa số. Quyết định cuối luôn là của con người.
-          </p>
+          <h1>{t("agent.title")}</h1>
+          <p className="sub">{t("agent.sub")}</p>
         </div>
       </div>
 
@@ -80,25 +76,25 @@ export default function AgentPage() {
           {turns.length === 0 ? (
             <div>
               <p className="tone-muted" style={{ marginBottom: 8 }}>
-                Thử hỏi:
+                {t("agent.try")}
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {GOI_Y.map((g) => (
-                  <button key={g} className="btn btn-sm" onClick={() => send(g)}>
-                    {g}
+                {GOI_Y.map((key) => (
+                  <button key={key} className="btn btn-sm" onClick={() => send(t(key))}>
+                    {t(key)}
                   </button>
                 ))}
               </div>
             </div>
           ) : null}
 
-          {turns.map((t, i) => (
+          {turns.map((turn, i) => (
             <div
               key={i}
               style={{
-                alignSelf: t.role === "user" ? "flex-end" : "flex-start",
+                alignSelf: turn.role === "user" ? "flex-end" : "flex-start",
                 maxWidth: "78%",
-                background: t.role === "user" ? "var(--accent-soft)" : "var(--surface2)",
+                background: turn.role === "user" ? "var(--accent-soft)" : "var(--surface2)",
                 color: "var(--ink)",
                 borderRadius: 10,
                 padding: "8px 12px",
@@ -106,11 +102,11 @@ export default function AgentPage() {
                 fontSize: 13.5,
               }}
             >
-              {t.text}
+              {turn.text}
             </div>
           ))}
 
-          {m.isPending ? <p className="spin">Agent đang đọc dữ liệu…</p> : null}
+          {m.isPending ? <p className="spin">{t("agent.thinking")}</p> : null}
           <div ref={bottomRef} />
         </div>
 
@@ -133,11 +129,11 @@ export default function AgentPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Hỏi về vi phạm, ticket, ưu tiên xử lý…"
+            placeholder={t("agent.placeholder")}
             style={{ flex: 1 }}
           />
           <button className="btn btn-primary" disabled={m.isPending || !input.trim()}>
-            Gửi
+            {t("agent.send")}
           </button>
         </form>
       </div>
