@@ -32,7 +32,12 @@ def rules_path() -> Path | None:
     if env := os.getenv("RULES_PATH"):
         candidates.append(Path(env))
     candidates.append(Path("/srv/rules/rules.yaml"))
-    candidates.append(Path(__file__).resolve().parents[3] / "rules" / "rules.yaml")
+    # Goc repo la cap cha thu tu tinh tu file nay — nhung CHI khi chay tu
+    # source. Trong image, app/ nam ngay duoi /srv nen khong du bon cap,
+    # va parents[3] nem IndexError truoc khi kip thu duong /srv o tren.
+    here = Path(__file__).resolve()
+    if len(here.parents) > 3:
+        candidates.append(here.parents[3] / "rules" / "rules.yaml")
     for c in candidates:
         if c.is_file():
             return c

@@ -78,6 +78,18 @@ def test_yaml_hong_thi_bao_ro():
         rules_file.parse("rules: [\n  - id: a\n")
 
 
+def test_duong_dan_nong_trong_image_khong_lam_no_vo(monkeypatch):
+    """Trong image API, app/ nam ngay duoi /srv — khong du bon cap cha.
+
+    Ban dau ham dung thang parents[3] nen no IndexError ngay khi dung danh
+    sach duong dan, truoc ca khi kip thu /srv/rules/rules.yaml — endpoint
+    chet hoan toan trong container du file luat nam san o do. Test chay tu
+    source nen khong bat duoc, phai gia lap duong dan nong.
+    """
+    monkeypatch.setattr(rules_file, "__file__", "/srv/app/rules.py")
+    rules_file.rules_path()  # truoc khi sua: IndexError
+
+
 def test_khong_co_scope_la_ap_cho_moi_bang():
     parsed = rules_file.parse(
         "version: 1\nrules:\n"
