@@ -13,6 +13,7 @@ export const en: Record<MessageKey, string> = {
   "common.confirm": "Confirm",
   "common.sending": "Sending…",
   "common.none": "—",
+  "common.close": "Close",
 
   "meta.title": "Data Operations WebApp",
   "meta.description": "Where the numbers are read, corrected, and stopped from going out wrong",
@@ -138,6 +139,23 @@ export const en: Record<MessageKey, string> = {
   "dash.delta.empty":
     "Nothing has been signed yet. Go to {link} to sign the first version — debt does not stop you, as long as you attach an approval note.",
   "dash.delta.emptyLink": "the versions page",
+  // ----------------------------------------------------------- rule book
+  "rules.button": "View rule book",
+  "rules.title": "QC rule book",
+  "rules.sub": "{n} rules · version {v} · declared in {file}",
+  "rules.loading": "the rule book",
+  "rules.tab.list": "LIST",
+  "rules.tab.raw": "RAW YAML",
+  "rules.outOfSync":
+    "The rule file is at version {file}, but the last QC run used version {applied} — " +
+    "the violations on screen came from the older rule book. Re-run QC to line them up.",
+  "rules.scope": "{states} only",
+  "rules.scopeAll": "every state",
+  "rules.showSql": "Rule SQL",
+  "rules.countsNote": "Violation counts are for the current load, within your scope and filters.",
+  "rules.hits": "{n} violation||{n} violations",
+  "rules.noHits": "no violations",
+
   "dash.byState.title": "Violations by region",
   "dash.byState.lastSigned": "Last signed version: {label}",
   "dash.byState.noneSigned": "Nothing signed yet",

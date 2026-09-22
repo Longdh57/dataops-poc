@@ -20,6 +20,7 @@ import { gw, patch, post, qs } from "@/app/lib/api";
 import { useFilters } from "@/app/lib/filters";
 import type { ExceptionDetail, QcException } from "@/app/lib/types";
 import { ErrBox, Loading, Severity, Status } from "@/app/ui/bits";
+import RulesButton from "@/app/ui/rules-panel";
 import { gridTheme, useGridLocale } from "@/app/ui/grid";
 
 type ListRes = {
@@ -80,13 +81,18 @@ export default function ExceptionsPage() {
             })}
           </p>
         </div>
-        <div className="field">
-          <label htmlFor="sv">{t("exc.severity")}</label>
-          <select id="sv" value={severity} onChange={(e) => setSeverity(e.target.value)}>
-            <option value="">{t("common.all")}</option>
-            <option value="critical">{t("severity.critical")}</option>
-            <option value="warning">{t("severity.warning")}</option>
-          </select>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="field">
+            <label htmlFor="sv">{t("exc.severity")}</label>
+            <select id="sv" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="">{t("common.all")}</option>
+              <option value="critical">{t("severity.critical")}</option>
+              <option value="warning">{t("severity.warning")}</option>
+            </select>
+          </div>
+          {/* Cot rule_id tren bang chi la ma. Bo luat de ngay canh de doc
+              duoc luat do noi gi ma khong roi man hinh nay. */}
+          <RulesButton />
         </div>
       </div>
 

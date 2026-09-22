@@ -19,7 +19,10 @@ services:
       retries: 10
 
   api:
-    build: ./apps/api
+    build:
+      # Context la goc repo vi image kem ca thu muc rules/
+      context: .
+      dockerfile: apps/api/Dockerfile
     environment:
       DATABASE_URL: postgresql://dataops:dataops@db:5432/dataops
       CORS_ORIGINS: http://localhost:3000
@@ -28,6 +31,8 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
     volumes:
       - ./apps/api/app:/srv/app:ro
+      # Sua rules.yaml la man hinh "Bo luat" thay ngay, khong build lai
+      - ./rules:/srv/rules:ro
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/adc.json:ro
     ports:
       - "8080:8080"

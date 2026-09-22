@@ -116,6 +116,30 @@ export type FactsPage = {
   scope: string[] | "tat ca";
 };
 
+/** Mot luat trong rules/rules.yaml, doc len de xem — khong sua duoc tu web. */
+export type QcRule = {
+  id: string;
+  severity: "critical" | "warning" | "info" | string;
+  /** null = luat ap cho moi bang. */
+  scope: string[] | null;
+  message: string;
+  sql: string;
+};
+
+/** Ca bo luat + noi dung tho cua chinh file. */
+export type RulesCatalog = {
+  /** Version ghi trong FILE — thu se chay o lan QC ke tiep. */
+  version: number | null;
+  rules: QcRule[];
+  raw: string;
+  source: string;
+  /** Version bo luat ma QC da chay THAT tren lan nap hien tai. */
+  applied_version: number | null;
+  qc_run_id: string | null;
+  /** false = file da doi nhung QC chua chay lai duoi bo luat moi. */
+  in_sync: boolean;
+};
+
 /** Mot vi pham luat, thuoc ve dung mot lan nap. Khong co trang thai. */
 export type QcException = {
   id: number;

@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import agent
+from . import agent, rules as rules_file
 from .auth import caller_email
 from .authz import Principal, load_principal, scope_clause
 from .db import db
@@ -341,6 +341,41 @@ def open_tickets(cur, only_blocking: bool = False) -> list[dict]:
             WHERE status IN ('open', 'awaiting_verify'){extra}
             ORDER BY blocking DESC, id""")
     return cur.fetchall()
+
+
+# --------------------------------------------------------------- bo luat QC
+
+@app.get("/api/rules")
+def rules(p: Me) -> dict:
+    """Bo luat dang khai bao trong rules/rules.yaml — doc len de xem.
+
+    Tra ve mot luc hai thu, va ca hai deu can:
+
+    - bo luat trong FILE — thu se chay o lan QC ke tiep;
+    - `applied_version` — version bo luat ma QC da chay THAT tren lan nap
+      hien tai.
+
+    Hai so nay lech nhau la chuyen binh thuong (vua sua file, chua chay
+    lai QC) nhung nguoi doc phai thay: khong thi ho doi chieu danh sach
+    vi pham voi mot bo luat chua tung chay.
+
+    Endpoint chi doc. Sua luat van la sua file roi chay lai QC Runner.
+    """
+    try:
+        catalog = rules_file.load()
+    except FileNotFoundError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+    with db() as conn, conn.cursor() as cur:
+        st = qc_state(cur)
+
+    applied = st.get("rules_version")
+    return {**catalog,
+            "applied_version": applied,
+            "qc_run_id": st.get("qc_run_id"),
+            "in_sync": applied is not None and applied == catalog["version"]}
 
 
 # -------------------------------------------------------------- vi pham QC
