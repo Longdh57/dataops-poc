@@ -569,7 +569,7 @@ la hong:
 ### Test
 
 ```bash
-cd apps/api && pytest tests -q   # 41 test: phan quyen, ticket, cong, phieu duyet, export, AI Agent
+cd apps/api && pytest tests -q   # 54 test: phan quyen, ticket, cong, phieu duyet, export, AI Agent
 pytest jobs/tests -q             # 18 test: logic export, bo luat, mirror len BigQuery — khong can cloud
 ```
 
@@ -620,28 +620,31 @@ cd apps/api && alembic upgrade head    # c3a71e5b9042
 FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
 ```
 
-## AI Agent — doc them tren QC (P7, demo)
+## AI Agent — doc them tren QC (P7, demo; chuyen sang Google ADK o P9)
 
 Theo [Demo_Build_Spec.md](Demo_Build_Spec.md): Deterministic QC Engine (bo
 luat `rules/rules.yaml` + `jobs/qc`) bat loi cung tu dong; AI Agent la mot
-lop **doc them**, khong thay the — no doc lai vi pham (`qc_exception`) va
-ticket dang mo (bang chung nam san o cot `ticket.evidence`) trong pham vi
-cua nguoi hoi, roi tra loi bang ngon ngu tu nhien. Agent khong dong ticket,
-khong ky ban, khong sua so — ba viec do van chi lam duoc qua co che da co
-o P3/P6 (QC Runner doi chieu, `POST /api/release`, mo ticket).
+lop **doc them**, khong thay the — 4 tool cua no deu la SELECT trong pham vi
+nguoi hoi, khong tool nao ghi/sua duoc gi. Agent khong dong ticket, khong ky
+ban, khong sua so — ba viec do van chi lam duoc qua co che da co o P3/P6 (QC
+Runner doi chieu, `POST /api/release`, mo ticket).
 
-Kien truc "RAG-lite": moi luot hoi la mot lan doc lai Postgres (khong luu
-gi giua cac lan goi, khong vector DB), nhet thang ket qua vao prompt goi
-Gemini qua Vertex AI — dung ADC cua service account `dataops-api`, khong
-can API key.
+**P9 doi kien truc**: tu "RAG-lite" (nhoi san toan bo ngu canh vao prompt
+moi luot hoi) sang [Google ADK](https://github.com/google/adk-python) —
+agent **tu quyet dinh** goi tool nao, chi doc dung phan du lieu can cho cau
+hoi. Xac nhan that qua bang `events` (ADK tu ghi): moi cau hoi deu co
+`functionCall` that, khong phai model bia so.
 
 | | |
 |---|---|
-| Backend | `POST /api/agent/chat` — [app/agent.py](apps/api/app/agent.py) (system prompt, ngu canh, goi Vertex AI), wire vao [main.py](apps/api/app/main.py) |
-| Giao dien | Trang `/agent` — [app/agent/page.tsx](apps/web/app/agent/page.tsx), chat don gian qua cong gateway hien co |
-| Model | `gemini-2.5-flash` (doi bang bien `AGENT_MODEL` neu can) |
-| Quyen GCP | Service account `dataops-api` them `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) |
-| Test | `test_agent_chat_khong_lo_pham_vi` trong [test_agent.py](apps/api/tests/test_agent.py) — mock `agent.ask`, chi kiem phan tu dieu khien duoc: ngu canh phai loc dung pham vi |
+| Backend | `POST /api/agent/chat` — package [app/agent/](apps/api/app/agent/) (`root_agent.py` = SYSTEM_PROMPT + `Agent`, `tools.py` = 4 tool ADK, `queries.py` = logic SQL thuan test duoc rieng, `sql_gen.py` = NL -> SQL cho `get_fact`, `service.py` = Runner + Session), wire vao [main.py](apps/api/app/main.py) |
+| `get_fact` (NL -> SQL) | Nhan cau hoi tu do (vd "to chuc co chu wells o TX"), tu sinh **mot dieu kien WHERE** (khong phai ca cau lenh) qua Gemini, validate 4 lop (ngoac/nhay can bang dung THU TU, khong `;`/`--`/`/*`, khong goi ham la, khong tu khoa cau lenh), AND them dieu kien pham vi o tang SQL, thu toi da 3 lan (loi lan truoc dua lai vao lan sinh sau) — het luot van sai thi tra loi khong tra loi duoc, khong bia so. Xem [app/agent/sql_gen.py](apps/api/app/agent/sql_gen.py) |
+| Giao dien | Trang `/agent` — [app/agent/page.tsx](apps/web/app/agent/page.tsx) — gui `session_id` thay vi toan bo lich su moi lan hoi |
+| Session | `DatabaseSessionService` cua ADK, luu THANG tren Postgres dang co (`DATABASE_URL`, dialect `postgresql+psycopg://` — khong can driver moi). ADK tu tao 5 bang rieng (`sessions`, `events`, `app_states`, `user_states`, `adk_internal_metadata`) **ngoai Alembic** — day la cach ADK tu quan ly, khac voi moi bang khac trong repo nay |
+| Pham vi | Ep tai TANG TOOL: `service.chat()` gan `scope_states`/`unrestricted` vao session state LUC MO PHIEN (tu `authz.Principal`, khong tu LLM); `tools.py` chi doc lai tu do. LLM khong the "gia vo" goi tool voi scope khac |
+| Model | `gemini-2.5-flash` qua Vertex AI (bien `GOOGLE_GENAI_USE_VERTEXAI=TRUE` dat trong code luc import, khong can Terraform/docker-compose them) — khong dung API key, ADC nhu truoc |
+| Quyen GCP | Service account `dataops-api` co `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) (khong doi tu P7) |
+| Test | [test_agent.py](apps/api/tests/test_agent.py) — pham vi kiem THAT truc tiep tren `queries.py` (khong can mock ADK), endpoint mock `agent.chat()` de khong goi Vertex AI that trong CI |
 
 **Truoc khi dung**: bat API `aiplatform.googleapis.com` cho project (repo
 nay khong co resource Terraform tu bat API — cac API duoc bat tay tu P1,

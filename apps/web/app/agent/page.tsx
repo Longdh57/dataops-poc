@@ -1,14 +1,13 @@
 "use client";
 
-// AI Agent — doc vi pham QC (qc_exception) + ticket dang mo qua Gemini/
-// Vertex AI, trong PHAM VI cua nguoi hoi. No la lop DOC THEM tren
+// AI Agent — Google ADK, doc vi pham QC (qc_exception) + ticket dang mo qua
+// 4 tool (chi doc), trong PHAM VI cua nguoi hoi. No la lop DOC THEM tren
 // Deterministic QC Engine, khong thay the: khong dong ticket, khong ky
 // ban, khong sua so — ba viec do van chi lam duoc qua co che da co. Xem
-// gioi han day du o SYSTEM_PROMPT trong apps/api/app/agent.py.
+// gioi han day du o SYSTEM_PROMPT trong apps/api/app/agent/root_agent.py.
 //
-// Luu y: giao dien doi duoc ngon ngu, con cau tra loi cua agent thi do
-// SYSTEM_PROMPT ben API quyet dinh — no van tra loi bang tieng Viet cho
-// toi khi phia API nhan them tham so ngon ngu.
+// Hoi thoai duoc nho boi SERVER (DatabaseSessionService tren Postgres) qua
+// `session_id` — khong con gui lai toan bo lich su moi lan hoi nhu truoc.
 
 import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
@@ -22,9 +21,7 @@ type Turn = { role: "user" | "agent"; text: string };
 
 type ChatResponse = {
   reply: string;
-  run_id: string | null;
-  violation_count: number;
-  ticket_count: number;
+  session_id: string;
 };
 
 const GOI_Y: MessageKey[] = ["agent.suggest1", "agent.suggest2", "agent.suggest3"];
@@ -32,18 +29,16 @@ const GOI_Y: MessageKey[] = ["agent.suggest1", "agent.suggest2", "agent.suggest3
 export default function AgentPage() {
   const { t } = useI18n();
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const m = useMutation({
     mutationFn: (message: string) =>
-      post<ChatResponse>("/agent/chat", { message, history: turns.slice(-10) }),
+      post<ChatResponse>("/agent/chat", { message, session_id: sessionId }),
     onSuccess: (res, message) => {
-      setTurns((prev) => [
-        ...prev,
-        { role: "user", text: message },
-        { role: "agent", text: res.reply },
-      ]);
+      setTurns((t) => [...t, { role: "user", text: message }, { role: "agent", text: res.reply }]);
+      setSessionId(res.session_id);
       setInput("");
       queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
     },
