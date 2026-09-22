@@ -9,3 +9,9 @@ variable "writers" {
   type        = list(string)
   default     = []
 }
+
+variable "readers" {
+  description = "Service account chi duoc DOC bucket. Gan o CAP BUCKET, khong phai cap project."
+  type        = list(string)
+  default     = []
+}
