@@ -21,3 +21,14 @@ resource "google_storage_bucket_iam_member" "writers" {
   role     = "roles/storage.objectAdmin"
   member   = "serviceAccount:${each.value}"
 }
+
+# URL ky san uy quyen theo danh tinh NGUOI KY, khong phai nguoi bam link.
+# API ky URL tai file nen ban than no phai doc duoc object — thieu cai nay
+# thi URL ky ra van hop le nhung GCS tra 403. Chi doc, khong ghi: viec ghi
+# file la cua Export Job.
+resource "google_storage_bucket_iam_member" "readers" {
+  for_each = toset(var.readers)
+  bucket   = google_storage_bucket.staging.name
+  role     = "roles/storage.objectViewer"
+  member   = "serviceAccount:${each.value}"
+}
