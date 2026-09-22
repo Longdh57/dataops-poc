@@ -67,6 +67,7 @@ module "runtime" {
   owner_email          = var.owner_email
   staging_bucket       = module.storage.bucket
   bq_dataset           = var.bq_dataset
+  bq_analytics_dataset = module.data.analytics_dataset_id
 }
 
 module "iam" {
@@ -86,8 +87,9 @@ module "data" {
   region     = var.region
   labels     = local.labels
 
-  dataset_id = var.bq_dataset
-  readers    = [local.sa.api, local.sa.jobs]
+  dataset_id        = var.bq_dataset
+  readers           = [local.sa.api, local.sa.jobs]
+  analytics_writers = [local.sa.jobs]
 }
 
 module "storage" {

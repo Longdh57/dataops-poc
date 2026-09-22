@@ -60,9 +60,10 @@ def test_summary_dem_theo_pham_vi(client):
 
 def test_summary_nhan_bo_loc_tren_thanh_cong_cu(client):
     khong_loc = client.get("/api/summary", headers=as_user(ADMIN)).json()
-    loc_nam = client.get("/api/summary?year=2021", headers=as_user(ADMIN)).json()
+    nam = khong_loc["facts"]["year_min"]  # nam that dang co, khong hard-code
+    loc_nam = client.get(f"/api/summary?year={nam}", headers=as_user(ADMIN)).json()
     assert loc_nam["facts"]["rows"] < khong_loc["facts"]["rows"]
-    assert loc_nam["facts"]["year_min"] == loc_nam["facts"]["year_max"] == 2021
+    assert loc_nam["facts"]["year_min"] == loc_nam["facts"]["year_max"] == nam
 
 
 def test_summary_xin_bang_ngoai_pham_vi_thi_rong(client):

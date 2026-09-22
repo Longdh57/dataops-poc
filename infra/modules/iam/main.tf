@@ -88,7 +88,9 @@ locals {
   runtime_accounts = {
     api = {
       display = "Dataops API (Cloud Run)"
-      roles   = ["roles/bigquery.dataViewer", "roles/bigquery.jobUser", "roles/cloudsql.client"]
+      # aiplatform.user: goi Gemini qua Vertex AI cho AI Agent (P7).
+      roles = ["roles/bigquery.dataViewer", "roles/bigquery.jobUser", "roles/cloudsql.client",
+      "roles/aiplatform.user"]
     }
     jobs = {
       display = "Dataops Jobs (Sync, QC, Export)"

@@ -2,8 +2,13 @@
 
 Ghi chu thiet ke quan trong: fact_current bi DOI TEN moi lan sync
 (staging -> current), nen id cua no KHONG on dinh. Moi bang tham chieu
-toi mot dong fact phai dung KHOA TU NHIEN (year, state, gender, name),
+toi mot dong fact phai dung KHOA TU NHIEN (year, state, institution_id),
 khong duoc dung khoa ngoai toi fact_current.id.
+
+Tu P8, `institution_id` (CERT cua FDIC) la phan duy nhat cua khoa dinh
+danh mot to chuc — KHONG dung `institution` (ten hien thi), vi ten mot to
+chuc doi cach viet hoa/thuong giua cac nam (du lieu FDIC that: "Keybank"
+nam 2022 vs "KeyBank" tu 2023 tro di, cung mot CERT).
 
 Nguyen tac thu hai, tu docs/quy-trinh-chat-luong.md: ung dung nay KHONG
 sua so. Khong co bang nao giu "so da sua tay" nua. Loi di ra ngoai bang
@@ -37,23 +42,23 @@ class FactCurrent(Base):
 
     year: Mapped[int] = mapped_column(Integer, primary_key=True)
     state: Mapped[str] = mapped_column(String(8), primary_key=True)
-    gender: Mapped[str] = mapped_column(String(1), primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    institution_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Ten hien thi — KHONG nam trong khoa, xem docstring dau file.
+    institution: Mapped[str] = mapped_column(String(256), nullable=False)
 
     run_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    number: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    market_share: Mapped[float | None] = mapped_column(Float)
-    prev_number: Mapped[int | None] = mapped_column(BigInteger)
+    deposit: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    deposit_share: Mapped[float | None] = mapped_column(Float)
+    prev_deposit: Mapped[int | None] = mapped_column(BigInteger)
     prev_year: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (
-        # Bo loc thuong dung nhat cua giao dien: state + year + gender,
-        # sap xep theo number giam dan. Index gop ca loc lan sap xep nen
+        # Bo loc thuong dung nhat cua giao dien: state + year,
+        # sap xep theo deposit giam dan. Index gop ca loc lan sap xep nen
         # planner khong phai quet nguoc roi loc bo.
-        Index("ix_fact_filter_sort", "state", "year", "gender",
-              sa_text_desc("number")),
-        Index("ix_fact_year_gender", "year", "gender"),
-        Index("ix_fact_name", "name"),
+        Index("ix_fact_filter_sort", "state", "year",
+              sa_text_desc("deposit")),
+        Index("ix_fact_institution", "institution"),
     )
 
 
@@ -73,8 +78,8 @@ class QcException(Base):
 
     year: Mapped[int | None] = mapped_column(Integer)
     state: Mapped[str | None] = mapped_column(String(8))
-    gender: Mapped[str | None] = mapped_column(String(1))
-    name: Mapped[str | None] = mapped_column(String(128))
+    institution_id: Mapped[int | None] = mapped_column(Integer)
+    institution: Mapped[str | None] = mapped_column(String(256))
 
     message: Mapped[str] = mapped_column(Text, nullable=False)
     observed: Mapped[dict | None] = mapped_column(JSON)
@@ -83,7 +88,7 @@ class QcException(Base):
 
     __table_args__ = (
         Index("ix_qc_run_severity", "run_id", "severity"),
-        Index("ix_qc_key", "year", "state", "gender", "name"),
+        Index("ix_qc_key", "year", "state", "institution_id"),
     )
 
 
@@ -107,9 +112,9 @@ class Ticket(Base):
     # khoa tu nhien — KHONG dung FK toi fact_current.id
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     state: Mapped[str] = mapped_column(String(8), nullable=False)
-    gender: Mapped[str] = mapped_column(String(1), nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
-    field: Mapped[str] = mapped_column(String(64), nullable=False, default="number")
+    institution_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    institution: Mapped[str] = mapped_column(String(256), nullable=False)
+    field: Mapped[str] = mapped_column(String(64), nullable=False, default="deposit")
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
     expected_value: Mapped[str] = mapped_column(Text, nullable=False)
@@ -140,7 +145,7 @@ class Ticket(Base):
     __table_args__ = (
         # Mot o chi duoc co MOT ticket dang song. Hai ticket cung o thi
         # khong ai biet cai nao la dieu kien nghiem thu that.
-        Index("uq_ticket_open_key", "year", "state", "gender", "name", "field",
+        Index("uq_ticket_open_key", "year", "state", "institution_id", "field",
               unique=True,
               postgresql_where=text("status IN ('open', 'awaiting_verify')")),
         Index("ix_ticket_status", "status", "blocking"),

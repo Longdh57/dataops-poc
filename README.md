@@ -98,11 +98,20 @@ proxy thi Google khong cap duoc chung chi.
 4. Settings -> Environments -> tao `production`, dat required reviewer
    de co buoc duyet tay
 
-## Du lieu (P2)
+## Du lieu (P2, doi nguon o P8)
 
-Nguon: `bigquery-public-data.usa_names.usa_1910_current` — ten khai sinh
-o Hoa Ky theo bang, gioi tinh, nam. Du lieu that do Cuc An sinh Xa hoi My
-cong bo, khong phai so tu sinh.
+Nguon: [FDIC Summary of Deposits](https://banks.data.fdic.gov/bankfind-suite/SOD)
+(`api.fdic.gov/banks/sod`) — deposit cua tung to chuc ngan hang FDIC bao
+hiem, khao sat hang nam vao 30/6. Du lieu that, cong khai, khong can API
+key. Truoc P8 dung `bigquery-public-data.usa_names` (ten khai sinh o My)
+lam du lieu mau vi cung dang `year, state, <2 truc khac>, so do` — xem
+[docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) cho boi canh
+doi dataset.
+
+**Khac voi nguon cu**: FDIC KHONG co san tren `bigquery-public-data` (chi
+co snapshot to chuc/chi nhanh, khong co lich su theo nam), nen
+`jobs/seed/main.py` tu goi API roi nap vao BigQuery — xem muc
+[Seed Job](#seed-job-p8) o duoi.
 
 ### Xem tren BigQuery
 
@@ -117,12 +126,17 @@ Hoac Console: BigQuery -> dataops-poc-2026 -> dataops_src -> fact_names
 |---|---|
 | Bang fact | `dataops-poc-2026.dataops_src.fact_names` |
 | Partition | `DATE(loaded_at)` — moi lan nap mot partition |
-| Cluster | `state, gender, year` |
-| Cot | run_id, loaded_at, year, state, gender, name, number, market_share, prev_number, prev_year |
+| Cluster | `state, institution_id, year` |
+| Cot | run_id, loaded_at, year, state, institution_id, institution, deposit, deposit_share, prev_deposit, prev_year |
 
-`market_share` = ty trong cua mot ten trong tong so tre cung (nam, bang,
-gioi tinh). Cong lai dung bang 1.0 o ca 1.224 nhom — day la co so cho
-luat QC `market_share_sum`.
+`institution_id` (CERT cua FDIC) la khoa THAT cua mot to chuc —
+`institution` (ten hien thi) khong dung lam khoa duoc vi FDIC ghi ten
+khong nhat quan cach viet hoa/thuong giua cac nam (vi du "Keybank" nam
+2022 vs "KeyBank" tu 2023, cung mot CERT).
+
+`deposit_share` = ty trong deposit cua mot to chuc trong tong deposit cua
+ca bang, nam do. Cong lai dung bang 1.0 o moi nhom `(year, state)` — day
+la co so cho luat QC `thi_phan_khong_tron_100`.
 
 ### Xem tren Postgres
 
@@ -131,7 +145,7 @@ Xem qua giao dien hoac API:
 
 - Giao dien: https://dataops-dev.3ddesigns.xyz
 - `GET /api/schema` — toan bo bang kem so dong va dung luong
-- `GET /api/facts?state=CA&year=2021&gender=F` — du lieu that
+- `GET /api/facts?state=CA&year=2026` — du lieu that
 - `GET /api/version` — do tuoi ban sao
 
 Duoi local thi noi thang duoc:
@@ -139,6 +153,29 @@ Duoi local thi noi thang duoc:
 ```bash
 docker exec dashboard-bigquery-db-1 psql -U dataops -d dataops -c '\d fact_current'
 ```
+
+### Seed Job (P8)
+
+`jobs/seed/main.py` (chi chay tay, `SEED_BIGQUERY=1`, xem docstring "day la
+buoc dung moi truong demo, khong phai duong chay hang ngay"):
+
+1. Goi `api.fdic.gov/banks/sod` phan trang (`limit=10000` + `offset`), lay
+   `SEED_YEAR_COUNT` nam gan nhat (mac dinh 5) tinh tu nam moi nhat FDIC co
+   — khong hard-code nam cu the.
+2. Nap (LOAD) du lieu tho muc CHI NHANH vao bang tam
+   `dataops_src.sod_raw_stage` tren BigQuery.
+3. Mot cau SQL gop tu chi nhanh len to chuc (`GROUP BY year, state,
+   institution_id`), tinh `deposit_share` va `prev_deposit`/`prev_year`
+   bang window function — cung mot ky thuat `LAG(...) OVER (...)` nhu
+   truoc, chi doi truc partition.
+
+```bash
+GCP_PROJECT_ID=dataops-poc-2026 SEED_BIGQUERY=1 SEED_YEAR_COUNT=5 \
+  python jobs/seed/main.py
+```
+
+Da chay that: 5 nam (2022–2026) → 385.625 dong chi nhanh → gop con
+**31.502 dong** to chuc.
 
 ### Sync Job
 
@@ -162,6 +199,10 @@ gcloud run jobs execute dataops-migrate --region=asia-southeast1
 ```
 
 ### Bai hoc ve hieu nang
+
+Cac con so duoi day do luc con dung `usa_names` (~1,2 trieu dong) — dataset
+FDIC hien tai gon hon (31,5 nghin dong) nen sync nhanh hon nhieu, nhung bai
+hoc ve `maintenance_work_mem` van dung, chi la khong con la nut that.
 
 Lan dau sync mat **229s** — vuot tieu chi 2 phut. Do log thi 199s trong
 so do la dung index, khong phai COPY. Nguyen nhan: `db-f1-micro` chi co
@@ -242,13 +283,14 @@ Tu P6, vi pham luat KHONG con khoa cong — xem muc [Quy trinh chat luong
 `rules/rules.yaml` — them luat moi chi can them mot muc, khong sua code.
 Nguong dat tu profile du lieu that:
 
-| Luat | Muc | Bat duoc |
+| Luat | Muc | Bat duoc (chay that tren 5 nam FDIC, 31.502 dong) |
 |---|---|---|
-| thi_phan_khong_tron_100 | critical | 0 — kiem tra toan ven |
-| duoi_nguong_kiem_duyet | critical | 0 — SSA khong cong bo duoi 5 |
-| tang_dot_bien | critical | 20 |
-| ten_pho_bien_bien_mat | critical | 1 |
-| bien_dong_bat_thuong | warning | 361 |
+| thi_phan_khong_tron_100 | critical | 0 — kiem tra TONG ca nhom (year,state) ≈ 1.0 |
+| deposit_share_sai_cong_thuc | critical | 0 — kiem TUNG dong: `deposit_share` phai khop `deposit / tong deposit ca bang`, chi ra dung o nao sai (khac voi luat tren, chi biet ca nhom lech) |
+| deposit_am_hoac_khong | critical | 509 — deposit <= 0 |
+| tang_dot_bien | critical | 29 — deposit tang >15 lan so nam truoc |
+| to_chuc_bien_mat_roi_quay_lai | critical | 0 |
+| bien_dong_bat_thuong | warning | 96 |
 
 Tu P6, `severity` chi con de xep thu tu doc va de loc — no khong quyet dinh
 duoc gi nua. Chi ticket moi chan phat hanh.
@@ -369,8 +411,9 @@ Buoc 1–6 la kich ban P6, da chay tron tren docker compose local. Buoc cuoi
 
 ### Con thieu so voi plan
 
-- Bo loc "cong ty" trong plan anh xa sang "ten" o bo du lieu nay
-  (`usa_names` khong co chieu cong ty).
+- ~~Bo loc "cong ty" trong plan anh xa sang "ten" o bo du lieu nay~~ — het
+  con no tu P8: dataset FDIC co dung chieu to chuc (`institution`), bo loc
+  o giao dien la tim theo ten to chuc that.
 - Export Job chua dung lich chay, nen job dung o `pending`. Giao dien da
   xu ly du bon trang thai `pending / running / done / error`.
 
@@ -494,8 +537,8 @@ la hong:
 ### Test
 
 ```bash
-cd apps/api && pytest tests -q   # 38 test: phan quyen, ticket, cong, phieu duyet, export
-pytest jobs/tests -q             # 16 test: logic export va bo luat, khong can BigQuery
+cd apps/api && pytest tests -q   # 41 test: phan quyen, ticket, cong, phieu duyet, export, AI Agent
+pytest jobs/tests -q             # 18 test: logic export, bo luat, mirror len BigQuery — khong can cloud
 ```
 
 `jobs/tests` chay duoc ma khong can cloud: phan de sai nhat cua Export Job la
@@ -544,6 +587,99 @@ cd apps/api && alembic upgrade head    # c3a71e5b9042
 # Sinh lai vi pham + doi chieu ticket
 FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
 ```
+
+## AI Agent — doc them tren QC (P7, demo)
+
+Theo [Demo_Build_Spec.md](Demo_Build_Spec.md): Deterministic QC Engine (bo
+luat `rules/rules.yaml` + `jobs/qc`) bat loi cung tu dong; AI Agent la mot
+lop **doc them**, khong thay the — no doc lai vi pham (`qc_exception`) va
+ticket dang mo (bang chung nam san o cot `ticket.evidence`) trong pham vi
+cua nguoi hoi, roi tra loi bang ngon ngu tu nhien. Agent khong dong ticket,
+khong ky ban, khong sua so — ba viec do van chi lam duoc qua co che da co
+o P3/P6 (QC Runner doi chieu, `POST /api/release`, mo ticket).
+
+Kien truc "RAG-lite": moi luot hoi la mot lan doc lai Postgres (khong luu
+gi giua cac lan goi, khong vector DB), nhet thang ket qua vao prompt goi
+Gemini qua Vertex AI — dung ADC cua service account `dataops-api`, khong
+can API key.
+
+| | |
+|---|---|
+| Backend | `POST /api/agent/chat` — [app/agent.py](apps/api/app/agent.py) (system prompt, ngu canh, goi Vertex AI), wire vao [main.py](apps/api/app/main.py) |
+| Giao dien | Trang `/agent` — [app/agent/page.tsx](apps/web/app/agent/page.tsx), chat don gian qua cong gateway hien co |
+| Model | `gemini-2.5-flash` (doi bang bien `AGENT_MODEL` neu can) |
+| Quyen GCP | Service account `dataops-api` them `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) |
+| Test | `test_agent_chat_khong_lo_pham_vi` trong [test_agent.py](apps/api/tests/test_agent.py) — mock `agent.ask`, chi kiem phan tu dieu khien duoc: ngu canh phai loc dung pham vi |
+
+**Truoc khi dung**: bat API `aiplatform.googleapis.com` cho project (repo
+nay khong co resource Terraform tu bat API — cac API duoc bat tay tu P1,
+xem [Ha tang da dung (P1)](#ha-tang-da-dung-p1)):
+
+```bash
+gcloud services enable aiplatform.googleapis.com --project=dataops-poc-2026
+cd infra && terraform apply   # cap them role aiplatform.user cho dataops-api
+```
+
+## Day qc_exception len BigQuery (P7, mirror mot chieu)
+
+Khach hang muon xem vi pham QC tren BigQuery de lam bao cao/BI, nhung ung
+dung VAN doc/ghi qua Postgres nhu truoc — khong doi duong doc de tiet kiem
+chi phi query BigQuery. Day la **mot chieu duy nhat**: sau moi lan QC quet
+xong (`jobs/qc/main.py`), toan bo bang `qc_exception` duoc **thay the
+nguyen khoi** (`WRITE_TRUNCATE`) vao `dataops_analytics.qc_exception` tren
+BigQuery — anh chup luon khop voi Postgres, khong tu tich luy lich su
+rieng (Postgres da giu du lich su vi no khong xoa vi pham cua `run_id` cu).
+
+| | |
+|---|---|
+| Code | `mirror_qc_exception_to_bigquery` trong [jobs/qc/main.py](jobs/qc/main.py), goi o cuoi `main()` |
+| Bat/tat | Bien `MIRROR_QC_TO_BIGQUERY=1` (mac dinh tat — job chay local/test khong can BigQuery) |
+| Dataset dich | `dataops_analytics` (rieng voi `dataops_src` — dataset do la "team Data ghi, ung dung chi doc", khong the ghi vao) |
+| Ha tang | `google_bigquery_dataset "analytics"` + IAM `bigquery.dataEditor` cho SA `jobs` — [infra/modules/data/main.tf](infra/modules/data/main.tf) |
+| Test | 2 test thuan (khong can BigQuery that) trong [jobs/tests/test_qc.py](jobs/tests/test_qc.py) — chuyen datetime sang ISO, giu nguyen `observed` (JSON) |
+
+Loi day len BigQuery **khong lam hong lan chay QC**: du lieu that (Postgres)
+da ghi xong truoc do, job chi log ro va lan chay sau se day lai ban moi.
+
+```bash
+# Test tay: day 1 lan thu cong
+MIRROR_QC_TO_BIGQUERY=1 GCP_PROJECT_ID=dataops-poc-2026 \
+  FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
+```
+
+## Doi dataset sang FDIC Summary of Deposits (P8)
+
+Theo dung dataset `Demo_Build_Spec.md` mo ta tu dau (`year, state,
+institution, deposit`), thay cho `usa_names` (`year, state, gender, name,
+number`) — chi tiet nguon/cot moi xem muc [Du lieu (P2, doi nguon o
+P8)](#du-lieu-p2-doi-nguon-o-p8).
+
+**Day la doi mien du lieu, khong phai doi ten cot** — `fact_current`,
+`qc_exception`, `ticket` bi DROP va tao lai; du lieu cu (ten khai sinh)
+khong con y nghia trong mien moi nen khong migrate. Khoa tu nhien rut tu
+**bon phan xuong ba**: `(year, state, institution_id)` — FDIC khong co
+truc tuong duong "gioi tinh" nen bi bo han, khong thay the.
+
+| | |
+|---|---|
+| Migration | `apps/api/alembic/versions/e91a2c5f7b14_p8_doi_dataset_sang_fdic_sod.py` — drop + tao lai 3 bang |
+| Model | `FactCurrent` / `QcException` / `Ticket` trong [apps/api/app/models.py](apps/api/app/models.py) |
+| Bo luat | `rules/rules.yaml` version 5 — viet lai ca 5 luat; `duoi_nguong_kiem_duyet` (nguong cong bo cua SSA, khong ap dung cho FDIC) doi thanh `deposit_am_hoac_khong` (deposit <= 0); them moi `deposit_share_sai_cong_thuc` — kiem TUNG dong deposit_share dung cong thuc, khong chi kiem tong ca nhom |
+| Seed | `jobs/seed/main.py` — xem muc [Seed Job (P8)](#seed-job-p8) |
+| Endpoint doi tham so | `/api/facts`, `/api/exceptions`, `/api/summary`: `gender`/`name` -> `institution`; `/api/tickets` nhan `institution_id` (khong con `gender`/`name`) |
+| Giao dien | Thanh loc bo o "Phan khuc" (gioi tinh), o "Ten" doi thanh "To chuc"; luoi du lieu doi cot `Gioi/Ten` -> `To chuc`, `So tre` -> `Deposit` |
+
+`institution_id` (CERT cua FDIC) la ID on dinh; `institution` (ten hien
+thi) KHONG nam trong khoa vi FDIC ghi ten khong nhat quan cach viet
+hoa/thuong giua cac nam (du lieu that: "Keybank" nam 2022 vs "KeyBank" tu
+2023, cung mot CERT) — dung ten lam khoa se tach nham mot to chuc thanh
+hai.
+
+Da chay tron tren du lieu that (khong mock): seed 5 nam FDIC (2022-2026,
+385.625 dong chi nhanh -> gop con 31.502 dong to chuc) vao `dataops_src`,
+sync ve Postgres, QC bat **634 vi pham that** (509 `deposit_am_hoac_khong`,
+29 `tang_dot_bien`, 96 `bien_dong_bat_thuong`), AI Agent tra loi dung theo
+schema moi, 40 test API + 18 test jobs deu qua.
 
 ## Terraform
 

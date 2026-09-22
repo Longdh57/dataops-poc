@@ -7,3 +7,13 @@ variable "readers" {
   type        = list(string)
   default     = []
 }
+variable "analytics_dataset_id" {
+  description = "Dataset rieng chua ban sao qc_exception (P7)"
+  type        = string
+  default     = "dataops_analytics"
+}
+variable "analytics_writers" {
+  description = "Service account duoc GHI vao dataset analytics"
+  type        = list(string)
+  default     = []
+}

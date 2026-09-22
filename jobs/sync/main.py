@@ -31,8 +31,8 @@ BUCKET = os.getenv("STAGING_BUCKET", f"{PROJECT}-staging")
 LOCATION = os.getenv("BQ_LOCATION", "asia-southeast1")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost:5432/dataops")
 
-COLUMNS = ["run_id", "year", "state", "gender", "name", "number",
-           "market_share", "prev_number", "prev_year"]
+COLUMNS = ["run_id", "year", "state", "institution_id", "institution", "deposit",
+           "deposit_share", "prev_deposit", "prev_year"]
 
 
 def log(msg: str) -> None:
@@ -137,10 +137,9 @@ def load_into_staging(conn: psycopg.Connection, prefix: str, workdir: str) -> in
 
 # Ten index chuan + dinh nghia. Tao sau khi COPY xong.
 INDEXES = {
-    "fact_pkey":            "(year, state, gender, name)",
-    "ix_fact_filter_sort":  "(state, year, gender, number DESC)",
-    "ix_fact_year_gender":  "(year, gender)",
-    "ix_fact_name":         "(name)",
+    "fact_pkey":            "(year, state, institution_id)",
+    "ix_fact_filter_sort":  "(state, year, deposit DESC)",
+    "ix_fact_institution":  "(institution)",
 }
 
 

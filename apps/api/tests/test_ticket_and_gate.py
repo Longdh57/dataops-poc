@@ -23,11 +23,11 @@ NHAN = "[test]"
 def _mot_o_trong(state: str):
     """Mot o co that trong lan nap hien tai va CHUA co ticket nao dang song."""
     with psycopg.connect(URL) as c, c.cursor() as cur:
-        cur.execute("""SELECT f.year, f.state, f.gender, f.name, f.number
+        cur.execute("""SELECT f.year, f.state, f.institution_id, f.institution, f.deposit
                        FROM fact_current f
                        LEFT JOIN ticket t
-                         ON t.year=f.year AND t.state=f.state AND t.gender=f.gender
-                        AND t.name=f.name AND t.status IN ('open','awaiting_verify')
+                         ON t.year=f.year AND t.state=f.state AND t.institution_id=f.institution_id
+                        AND t.status IN ('open','awaiting_verify')
                        WHERE f.state=%s AND t.id IS NULL
                        LIMIT 1""", (state,))
         return cur.fetchone()
@@ -40,11 +40,11 @@ def _don_ticket(tid: int) -> None:
 
 
 def _mo_ticket(client, o, blocking: bool, user=ADMIN):
-    year, state, gender, name, number = o
+    year, state, institution_id, institution, deposit = o
     return client.post("/api/tickets", headers=as_user(user), json={
-        "year": year, "state": state, "gender": gender, "name": name,
-        "title": "so nhap sai, doi chieu ban goc SSA",
-        "expected_value": int(number) + 7,
+        "year": year, "state": state, "institution_id": institution_id,
+        "title": "so nhap sai, doi chieu ban goc FDIC",
+        "expected_value": int(deposit) + 7,
         "evidence": "anh chup bang goc", "blocking": blocking,
     })
 
@@ -56,7 +56,7 @@ def test_ticket_phai_co_dieu_kien_nghiem_thu(client):
     o = _mot_o_trong("TX")
     assert o, "can mot o TX chua co ticket"
     r = client.post("/api/tickets", headers=as_user(ADMIN), json={
-        "year": o[0], "state": o[1], "gender": o[2], "name": o[3],
+        "year": o[0], "state": o[1], "institution_id": o[2],
         "title": "so nay sai",
     })
     assert r.status_code == 422, r.text
@@ -67,7 +67,7 @@ def test_ticket_trung_so_nguon_bi_tu_choi(client):
     o = _mot_o_trong("TX")
     assert o
     r = client.post("/api/tickets", headers=as_user(ADMIN), json={
-        "year": o[0], "state": o[1], "gender": o[2], "name": o[3],
+        "year": o[0], "state": o[1], "institution_id": o[2],
         "title": "khong co gi de sua", "expected_value": int(o[4]),
     })
     assert r.status_code == 400
@@ -234,16 +234,16 @@ def test_facts_tra_ve_so_cua_nguon_chu_khong_sua(client):
     """Khong con duong nao lam so doc ra khac so trong fact_current."""
     o = _mot_o_trong("TX")
     assert o
-    year, state, gender, name, number = o
+    year, state, institution_id, institution, deposit = o
     r = _mo_ticket(client, o, blocking=False)
     tid = r.json()["id"]
     try:
-        res = client.get(f"/api/facts?state={state}&year={year}&gender={gender}&name={name}",
+        res = client.get("/api/facts", params={"state": state, "year": year, "limit": 500},
                          headers=as_user(ADMIN)).json()
-        row = next(x for x in res["rows"] if x["name"] == name)
-        # Ticket doi so thanh number+7, nhung API van tra ve so cua nguon.
-        assert row["number"] == number
+        row = next(x for x in res["rows"] if x["institution_id"] == institution_id)
+        # Ticket doi so thanh deposit+7, nhung API van tra ve so cua nguon.
+        assert row["deposit"] == deposit
         assert row["ticket_id"] == tid
-        assert row["ticket_expected"] == str(number + 7)
+        assert row["ticket_expected"] == str(deposit + 7)
     finally:
         _don_ticket(tid)

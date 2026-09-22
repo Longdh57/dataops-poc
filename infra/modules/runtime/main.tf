@@ -388,6 +388,27 @@ resource "google_cloud_run_v2_job" "qc" {
           value = "/srv/rules/rules.yaml"
         }
 
+        # P7: sau moi lan quet, day anh chup qc_exception len BigQuery cho
+        # bao cao/BI phia khach hang. Ung dung van doc/ghi qua Postgres —
+        # day chi la mot chieu ban sao, khong doi duong doc de tiet kiem
+        # chi phi query.
+        env {
+          name  = "MIRROR_QC_TO_BIGQUERY"
+          value = "1"
+        }
+        env {
+          name  = "GCP_PROJECT_ID"
+          value = var.project_id
+        }
+        env {
+          name  = "BQ_ANALYTICS_DATASET"
+          value = var.bq_analytics_dataset
+        }
+        env {
+          name  = "BQ_LOCATION"
+          value = var.region
+        }
+
         env {
           name = "DATABASE_URL"
           value_source {

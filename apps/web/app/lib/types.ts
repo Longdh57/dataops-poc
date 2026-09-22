@@ -70,8 +70,8 @@ export type Ticket = {
   id: number;
   year: number;
   state: string;
-  gender: string;
-  name: string;
+  institution_id: number;
+  institution: string;
   field: string;
   title: string;
   expected_value: string;
@@ -94,12 +94,12 @@ export type Ticket = {
 export type Fact = {
   year: number;
   state: string;
-  gender: string;
-  name: string;
+  institution_id: number;
+  institution: string;
   run_id: string;
-  number: number;
-  market_share: number | null;
-  prev_number: number | null;
+  deposit: number;
+  deposit_share: number | null;
+  prev_deposit: number | null;
   prev_year: number | null;
   /** O nay dang co ticket cho nguon sua — so VAN la so cua nguon. */
   ticket_id: number | null;
@@ -124,8 +124,8 @@ export type QcException = {
   severity: "critical" | "warning" | string;
   year: number | null;
   state: string | null;
-  gender: string | null;
-  name: string | null;
+  institution_id: number | null;
+  institution: string | null;
   message: string;
   observed: Record<string, unknown> | null;
   created_at: string;
@@ -136,12 +136,12 @@ export type ExceptionDetail = {
   fact: {
     year: number;
     state: string;
-    gender: string;
-    name: string;
+    institution_id: number;
+    institution: string;
     run_id: string;
-    number: number;
-    market_share: number | null;
-    prev_number: number | null;
+    deposit: number;
+    deposit_share: number | null;
+    prev_deposit: number | null;
     prev_year: number | null;
   } | null;
   /** Ticket dang song tren dung o nay, neu co. */
@@ -159,7 +159,7 @@ export type ExceptionDetail = {
 
 export type Summary = {
   scope: string[] | "tat ca";
-  facts: { rows: number; year_min: number | null; year_max: number | null; total_number: number | null };
+  facts: { rows: number; year_min: number | null; year_max: number | null; total_deposit: number | null };
   exceptions: {
     open: number;
     by_severity: Record<string, number>;
@@ -219,6 +219,5 @@ export type ExportCreated = {
 export type Options = {
   states: string[];
   years: number[];
-  genders: string[];
   sortable: string[];
 };

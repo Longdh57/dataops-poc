@@ -26,15 +26,15 @@ import { gridTheme } from "@/app/ui/grid";
 const PAGE = 500;
 
 const SORTS = [
-  { v: "number", label: "số trẻ" },
-  { v: "market_share", label: "thị phần" },
+  { v: "deposit", label: "deposit" },
+  { v: "deposit_share", label: "thị phần" },
   { v: "year", label: "năm" },
-  { v: "name", label: "tên" },
+  { v: "institution", label: "tổ chức" },
 ];
 
 export default function DataPage() {
   const { filters } = useFilters();
-  const [sort, setSort] = useState("number");
+  const [sort, setSort] = useState("deposit");
   const [desc, setDesc] = useState(true);
 
   const q = useInfiniteQuery({
@@ -63,13 +63,12 @@ export default function DataPage() {
     () => [
       { field: "state", headerName: "Bang", width: 92, cellClass: "cell-key" },
       { field: "year", headerName: "Năm", width: 88, cellClass: "cell-mono" },
-      { field: "gender", headerName: "Giới", width: 80, cellClass: "cell-mono" },
-      { field: "name", headerName: "Tên", flex: 1, minWidth: 140, cellClass: "cell-strong" },
+      { field: "institution", headerName: "Tổ chức", flex: 1, minWidth: 200, cellClass: "cell-strong" },
       {
         // So o day LUON la so cua nguon. Nhan "có ticket" chi noi rang o
         // nay dang cho team Data sua — no khong thay so, vi ung dung nay
         // khong sua so.
-        field: "number", headerName: "Số trẻ", width: 170, type: "rightAligned",
+        field: "deposit", headerName: "Deposit", width: 170, type: "rightAligned",
         valueFormatter: (p) => num(p.value as number),
         cellRenderer: (p: { data?: Fact; value: number }) =>
           p.data?.ticket_id ? (
@@ -88,12 +87,12 @@ export default function DataPage() {
           ),
       },
       {
-        field: "market_share", headerName: "Thị phần", width: 120, type: "rightAligned",
+        field: "deposit_share", headerName: "Thị phần", width: 120, type: "rightAligned",
         valueFormatter: (p) => pct(p.value as number),
         cellClass: "cell-code",
       },
       {
-        field: "prev_number", headerName: "Năm trước", width: 120, type: "rightAligned",
+        field: "prev_deposit", headerName: "Năm trước", width: 120, type: "rightAligned",
         valueFormatter: (p) => num(p.value as number),
         cellClass: "cell-dim",
       },
@@ -142,7 +141,7 @@ export default function DataPage() {
               rowData={rows}
               columnDefs={cols}
               defaultColDef={{ sortable: true, resizable: true, suppressHeaderMenuButton: true }}
-              getRowId={(p) => `${p.data.year}-${p.data.state}-${p.data.gender}-${p.data.name}`}
+              getRowId={(p) => `${p.data.year}-${p.data.state}-${p.data.institution_id}`}
               onBodyScrollEnd={onScrollEnd}
               suppressCellFocus
               animateRows={false}

@@ -56,3 +56,34 @@ def test_co_scope_thi_loc_theo_bang_va_khong_phan_biet_hoa_thuong():
     where, params = scope_filter(luat(scope=["ca", "Tx"]))
     assert where == "WHERE x.state = ANY(%s)"
     assert params == [["CA", "TX"]]
+
+
+# ---------------------------------------------- day len BigQuery (P7)
+
+rows_for_bq = qc_main.qc_exception_rows_for_bigquery
+
+
+def test_datetime_thanh_iso_con_observed_giu_nguyen_object():
+    import datetime as dt
+
+    rows = [{
+        "id": 1, "run_id": "run-1", "rule_id": "tang_dot_bien", "severity": "critical",
+        "year": 2013, "state": "TX", "institution_id": 3510, "institution": "Bank of America",
+        "message": "m", "observed": {"deposit": 98, "prev_deposit": 6},
+        "created_at": dt.datetime(2026, 9, 22, 2, 30, tzinfo=dt.timezone.utc),
+    }]
+    out = rows_for_bq(rows, synced_at="2026-09-22T03:00:00+00:00")
+    assert out[0]["created_at"] == "2026-09-22T02:30:00+00:00"
+    assert out[0]["observed"] == {"deposit": 98, "prev_deposit": 6}
+    assert out[0]["synced_at"] == "2026-09-22T03:00:00+00:00"
+
+
+def test_created_at_rong_thanh_none_khong_nem_loi():
+    rows = [{
+        "id": 1, "run_id": "run-1", "rule_id": "r", "severity": "warning",
+        "year": None, "state": None, "institution_id": None, "institution": None,
+        "message": "m", "observed": None, "created_at": None,
+    }]
+    out = rows_for_bq(rows, synced_at="2026-09-22T03:00:00+00:00")
+    assert out[0]["created_at"] is None
+    assert out[0]["observed"] is None

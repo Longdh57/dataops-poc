@@ -1,7 +1,7 @@
 "use client";
 
-// Thanh loc dung chung cho moi man hinh: ky (nam), phan khuc (gioi),
-// khu vuc (bang), va ten. Gia tri nam tren URL nen moi trang tu doc duoc.
+// Thanh loc dung chung cho moi man hinh: ky (nam), khu vuc (bang), va
+// to chuc. Gia tri nam tren URL nen moi trang tu doc duoc.
 
 import { useEffect, useState } from "react";
 
@@ -11,19 +11,19 @@ import { useOptions } from "@/app/lib/queries";
 export default function FilterBar() {
   const { filters, setFilters, count } = useFilters();
   const { data: opt } = useOptions();
-  const [name, setName] = useState(filters.name ?? "");
+  const [institution, setInstitution] = useState(filters.institution ?? "");
 
   // Go phim khong goi API ngay — cho 350ms roi moi day len URL.
   useEffect(() => {
     const t = setTimeout(() => {
-      if ((filters.name ?? "") !== name) setFilters({ name });
+      if ((filters.institution ?? "") !== institution) setFilters({ institution });
     }, 350);
     return () => clearTimeout(t);
-  }, [name]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [institution]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setName(filters.name ?? "");
-  }, [filters.name]);
+    setInstitution(filters.institution ?? "");
+  }, [filters.institution]);
 
   return (
     <div className="filterbar">
@@ -43,19 +43,6 @@ export default function FilterBar() {
         </div>
 
         <div className="field">
-          <label htmlFor="f-gender">Phân khúc</label>
-          <select
-            id="f-gender"
-            value={filters.gender ?? ""}
-            onChange={(e) => setFilters({ gender: e.target.value })}
-          >
-            <option value="">cả hai</option>
-            <option value="F">nữ</option>
-            <option value="M">nam</option>
-          </select>
-        </div>
-
-        <div className="field">
           <label htmlFor="f-state">Khu vực</label>
           <select
             id="f-state"
@@ -70,19 +57,19 @@ export default function FilterBar() {
         </div>
 
         <div className="field">
-          <label htmlFor="f-name">Tên</label>
+          <label htmlFor="f-institution">Tổ chức</label>
           <input
-            id="f-name"
+            id="f-institution"
             type="text"
             placeholder="bắt đầu bằng…"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            style={{ width: 140 }}
+            value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            style={{ width: 160 }}
           />
         </div>
 
         {count > 0 ? (
-          <button className="btn btn-sm" onClick={() => setFilters({ state: "", year: "", gender: "", name: "" })}>
+          <button className="btn btn-sm" onClick={() => setFilters({ state: "", year: "", institution: "" })}>
             Xoá {count} bộ lọc
           </button>
         ) : null}
