@@ -556,36 +556,26 @@ def update_ticket(ticket_id: int, body: TicketAction, p: Me) -> dict:
 
 # ------------------------------------------------------------- AI Agent
 
-class AgentTurn(BaseModel):
-    role: str = Field(description="user | agent")
-    text: str
-
-
 class AgentChatBody(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
-    history: list[AgentTurn] = Field(default_factory=list, max_length=20)
+    # Noi tiep hoi thoai da co (server tra ve tu lan hoi truoc). Bo trong
+    # thi mo phien moi — phien luu tren Postgres qua DatabaseSessionService,
+    # xem app/agent/service.py.
+    session_id: str | None = None
 
 
 @app.post("/api/agent/chat")
-def agent_chat(body: AgentChatBody, p: Me) -> dict:
-    """Hoi AI Agent ve vi pham QC + ticket TRONG PHAM VI cua nguoi hoi.
+async def agent_chat(body: AgentChatBody, p: Me) -> dict:
+    """Hoi AI Agent (Google ADK) ve vi pham QC + ticket TRONG PHAM VI cua nguoi hoi.
 
-    Agent chi doc — no doc lai Issue Log (qc_exception) va ticket dang mo
-    (bang chung nam o cot evidence) o moi luot hoi, khong nho gi giua cac
-    lan goi. No khong dong ticket, khong ky ban, khong sua so: ba viec do
+    Agent chi doc — 4 tool cua no deu la SELECT, khong tool nao ghi/sua
+    duoc gi. No khong dong ticket, khong ky ban, khong sua so: ba viec do
     van chi lam duoc qua co che da co (QC Runner, POST /api/release, mo
-    ticket). Xem SYSTEM_PROMPT trong app/agent.py cho day du gioi han.
+    ticket). Xem SYSTEM_PROMPT trong app/agent/root_agent.py cho day du
+    gioi han, va app/agent/tools.py cho cach pham vi duoc ep tai tang tool.
     """
-    with db() as conn, conn.cursor() as cur:
-        context = agent.build_context(cur, p)
-
-    reply = agent.ask(body.message, [t.model_dump() for t in body.history], context)
-    return {
-        "reply": reply,
-        "run_id": context.get("run_id"),
-        "violation_count": sum(r["n"] for r in context.get("by_rule", [])),
-        "ticket_count": len(context.get("tickets", [])),
-    }
+    reply, session_id = await agent.chat(p, body.message, body.session_id)
+    return {"reply": reply, "session_id": session_id}
 
 
 # ---------------------------------------------------------------- release
