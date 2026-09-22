@@ -50,7 +50,7 @@ export default function ExceptionsPage() {
       {
         headerName: "Khoá", width: 230, cellClass: "cell-code",
         valueGetter: (p) =>
-          [p.data?.state, p.data?.gender, p.data?.year, p.data?.name].filter(Boolean).join(" · "),
+          [p.data?.state, p.data?.institution, p.data?.year].filter(Boolean).join(" · "),
       },
       { field: "message", headerName: "Vấn đề", flex: 1, minWidth: 220 },
       {
@@ -162,7 +162,7 @@ function Panel({ id }: { id: number | null }) {
     mutationFn: () =>
       post("/tickets", {
         year: d!.exception.year, state: d!.exception.state,
-        gender: d!.exception.gender, name: d!.exception.name,
+        institution_id: d!.exception.institution_id,
         title: title.trim(), expected_value: Number(expected),
         evidence: evidence.trim() || null, blocking,
         from_rule_id: d!.exception.rule_id,
@@ -194,7 +194,7 @@ function Panel({ id }: { id: number | null }) {
   const e = d!.exception;
   const t = d!.ticket;
   const song = t && (t.status === "open" || t.status === "awaiting_verify");
-  const theo_o = e.name !== null && e.year !== null;
+  const theo_o = e.institution_id !== null && e.year !== null;
 
   return (
     <div className="card">
@@ -207,7 +207,7 @@ function Panel({ id }: { id: number | null }) {
 
       <h2 style={{ marginBottom: 4 }}>{e.message}</h2>
       <p className="sub mono" style={{ marginBottom: 12 }}>
-        {[e.state, e.gender, e.year, e.name].filter(Boolean).join(" · ")}
+        {[e.state, e.institution, e.year].filter(Boolean).join(" · ")}
       </p>
 
       {/* --- ban da ky gan nhat dat canh lan nap nay --- */}
@@ -217,7 +217,7 @@ function Panel({ id }: { id: number | null }) {
           {d!.last_signed ? (
             <>
               <div className="big">
-                {d!.last_signed.run_id === d!.fact?.run_id ? num(d!.fact?.number) : "—"}
+                {d!.last_signed.run_id === d!.fact?.run_id ? num(d!.fact?.deposit) : "—"}
               </div>
               <div className="stat-note">
                 {d!.last_signed.label} · {dt(d!.last_signed.signed_at)}
@@ -233,12 +233,12 @@ function Panel({ id }: { id: number | null }) {
         </div>
         <div>
           <div className="stat-label">Lần nạp này</div>
-          <div className="big">{num(d!.fact?.number)}</div>
+          <div className="big">{num(d!.fact?.deposit)}</div>
           <div className="stat-note">
             {d!.fact?.prev_year
-              ? `${d!.fact.prev_year}: ${num(d!.fact.prev_number)}`
+              ? `${d!.fact.prev_year}: ${num(d!.fact.prev_deposit)}`
               : "không có số năm trước"}
-            {d!.fact?.market_share ? ` · ${pct(d!.fact.market_share)}` : ""}
+            {d!.fact?.deposit_share ? ` · ${pct(d!.fact.deposit_share)}` : ""}
           </div>
         </div>
       </div>
@@ -283,7 +283,7 @@ function Panel({ id }: { id: number | null }) {
               onChange={(ev) => setExpected(ev.target.value)}
               style={{ width: 130 }}
             />
-            <span className="sub">nguồn đang là {num(d!.fact?.number)}</span>
+            <span className="sub">nguồn đang là {num(d!.fact?.deposit)}</span>
           </div>
 
           <input

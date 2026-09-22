@@ -26,9 +26,9 @@ Mở dashboard. Chỉ vào dải trạng thái trên cùng.
 
 Sang tab *Dữ liệu*. Cuộn nhanh vài lần.
 
-> "1,2 triệu dòng thật — tên khai sinh ở Mỹ do Cục An sinh Xã hội công bố.
-> Lưới tải 500 dòng một lượt và tự nối tiếp khi cuộn, nên không có nút sang
-> trang nào cả."
+> "Hơn 31 nghìn dòng thật — deposit của từng ngân hàng theo bang, 5 năm gần
+> nhất, do FDIC công bố (Summary of Deposits). Lưới tải 500 dòng một lượt
+> và tự nối tiếp khi cuộn, nên không có nút sang trang nào cả."
 
 Chỉ vào banner độ tươi.
 
@@ -44,7 +44,7 @@ Chỉ vào banner độ tươi.
 Sang tab *Vi phạm*. Chọn một dòng `tang_dot_bien`.
 
 > "Luật QC khai báo trong một file YAML, thêm luật mới không cần sửa code.
-> Luật này bắt được những chỗ tăng hơn 10 lần so với năm trước."
+> Luật này bắt được những chỗ deposit tăng hơn 15 lần so với năm trước."
 
 Panel mở bên phải.
 
@@ -88,9 +88,9 @@ Tải lại trang.
 
 Sang tab *Ticket*, gỡ chặn ticket vừa rồi với lý do. Sang tab *Phiên bản*.
 
-> "Còn 382 chỗ vi phạm luật, và cổng vẫn cho ký. Vì vi phạm chỉ là **nghi
-> ngờ của máy** — phần lớn là số thật của bang nhỏ. Máy không có quyền phủ
-> quyết người chịu trách nhiệm."
+> "Còn hàng trăm chỗ vi phạm luật, và cổng vẫn cho ký. Vì vi phạm chỉ là
+> **nghi ngờ của máy** — phần lớn là deposit thật của tổ chức nhỏ. Máy
+> không có quyền phủ quyết người chịu trách nhiệm."
 
 Chỉ vào ô phiếu duyệt.
 
@@ -119,9 +119,9 @@ Sang tab *Yêu cầu dữ liệu*, chọn Excel, gửi yêu cầu.
 
 Khi xong, chỉ vào dòng trong bảng.
 
-> "170 nghìn dòng, chỉ CA và TX. Không phải giao diện lọc hộ — máy chủ lọc,
-> nên sửa tham số trên URL cũng không lấy thêm được bang nào. Số trong file
-> là số của BigQuery, không qua tay ai."
+> "Chỉ CA và TX. Không phải giao diện lọc hộ — máy chủ lọc, nên sửa tham số
+> trên URL cũng không lấy thêm được bang nào. Số trong file là số của
+> BigQuery, không qua tay ai."
 
 Mở file `.ban-ky.txt` đi kèm.
 

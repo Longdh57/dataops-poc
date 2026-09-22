@@ -72,7 +72,7 @@ export default function DashboardPage() {
         <Stat label="Ticket đang chặn" value={num(s.tickets.blocking)}
               tone={s.tickets.blocking ? "crit" : "good"}
               note={`${num(s.tickets.awaiting_verify)} đang chờ QC xác minh`} />
-        <Stat label="Tổng số trẻ" value={num(s.facts.total_number)} note="số của nguồn" />
+        <Stat label="Tổng deposit" value={num(s.facts.total_deposit)} note="số của nguồn" />
       </div>
 
       <div className="split" style={{ marginBottom: 18 }}>

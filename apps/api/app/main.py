@@ -22,6 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from . import agent
 from .auth import caller_email
 from .authz import Principal, load_principal, scope_clause
 from .db import db
@@ -38,8 +39,8 @@ app.add_middleware(
 )
 
 # Allowlist ten cot duoc sap xep. Khong bao gio noi chuoi tu client vao SQL.
-SORTABLE = {"number", "market_share", "name", "year"}
-NATURAL_KEY = ("year", "state", "gender", "name")
+SORTABLE = {"deposit", "deposit_share", "institution", "year"}
+NATURAL_KEY = ("year", "state", "institution_id")
 
 
 def principal(request: Request) -> Principal:
@@ -181,9 +182,8 @@ def facts(
     p: Me,
     state: str | None = None,
     year: int | None = None,
-    gender: str | None = None,
-    name: str | None = None,
-    sort: str = Query("number"),
+    institution: str | None = None,
+    sort: str = Query("deposit"),
     desc: bool = True,
     limit: int = Query(50, ge=1, le=500),
     cursor: str | None = None,
@@ -197,18 +197,16 @@ def facts(
 
     if year:
         where.append("f.year = %s"); params.append(year)
-    if gender:
-        where.append("f.gender = %s"); params.append(gender.upper())
-    if name:
-        where.append("f.name ILIKE %s"); params.append(f"{name}%")
+    if institution:
+        where.append("f.institution ILIKE %s"); params.append(f"{institution}%")
 
     # Keyset pagination: khong dung OFFSET, nen trang sau khong cham dan.
     op = "<" if desc else ">"
     if cursor:
         c = decode_cursor(cursor)
         where.append(
-            f"(f.{sort}, f.year, f.state, f.gender, f.name) {op} (%s, %s, %s, %s, %s)")
-        params += [c["s"], c["year"], c["state"], c["gender"], c["name"]]
+            f"(f.{sort}, f.year, f.state, f.institution_id) {op} (%s, %s, %s, %s)")
+        params += [c["s"], c["year"], c["state"], c["institution_id"]]
 
     clause = f"WHERE {' AND '.join(w for w in where if w)}" if where else ""
     direction = "DESC" if desc else "ASC"
@@ -217,18 +215,18 @@ def facts(
     # sua so. O nao dang co ticket thi duoc danh dau de nguoi doc biet no
     # dang cho team Data sua, chu KHONG thay so.
     sql = f"""
-        SELECT f.year, f.state, f.gender, f.name, f.run_id,
-               f.number, f.market_share, f.prev_number, f.prev_year,
+        SELECT f.year, f.state, f.institution_id, f.institution, f.run_id,
+               f.deposit, f.deposit_share, f.prev_deposit, f.prev_year,
                t.id AS ticket_id, t.status AS ticket_status,
                t.expected_value AS ticket_expected, t.blocking AS ticket_blocking
         FROM fact_current f
         LEFT JOIN ticket t
           ON t.year = f.year AND t.state = f.state
-         AND t.gender = f.gender AND t.name = f.name AND t.field = 'number'
+         AND t.institution_id = f.institution_id AND t.field = 'deposit'
          AND t.status IN ('open', 'awaiting_verify')
         {clause}
         ORDER BY f.{sort} {direction}, f.year {direction}, f.state {direction},
-                 f.gender {direction}, f.name {direction}
+                 f.institution_id {direction}
         LIMIT %s
     """
     with db() as conn, conn.cursor() as cur:
@@ -274,7 +272,7 @@ def violations_of(cur, run_id: str) -> dict:
         """SELECT count(*) AS n,
                   coalesce(sum((('x' || substr(md5(
                       rule_id || '|' || coalesce(year::text,'') || '|' || coalesce(state,'') ||
-                      '|' || coalesce(gender,'') || '|' || coalesce(name,'')
+                      '|' || coalesce(institution_id::text,'')
                   ), 1, 8))::bit(32)::int)::bigint), 0) AS h
            FROM qc_exception WHERE run_id = %s""", (run_id,))
     agg = cur.fetchone()
@@ -301,10 +299,10 @@ def data_checksum(cur, source_run_ids: list[str] | None) -> str | None:
     if not source_run_ids:
         return None
     cur.execute(
-        """SELECT count(*) AS n, coalesce(sum(number), 0) AS total,
+        """SELECT count(*) AS n, coalesce(sum(deposit), 0) AS total,
                   coalesce(sum((('x' || substr(md5(
-                      year::text || '|' || state || '|' || gender || '|' || name ||
-                      '|' || number::text
+                      year::text || '|' || state || '|' || institution_id::text ||
+                      '|' || deposit::text
                   ), 1, 8))::bit(32)::int)::bigint), 0) AS h
            FROM fact_current WHERE run_id = ANY(%s)""", (list(source_run_ids),))
     r = cur.fetchone()
@@ -335,7 +333,7 @@ def open_tickets(cur, only_blocking: bool = False) -> list[dict]:
     """
     extra = " AND blocking" if only_blocking else ""
     cur.execute(
-        f"""SELECT id, year, state, gender, name, field, title, expected_value,
+        f"""SELECT id, year, state, institution_id, institution, field, title, expected_value,
                    observed_at_open, last_observed, blocking, status, created_by,
                    created_at, marked_fixed_by, marked_fixed_at,
                    last_checked_run_id, last_checked_at, from_rule_id, evidence
@@ -353,8 +351,7 @@ def exceptions(
     severity: str | None = None,
     state: str | None = None,
     year: int | None = None,
-    gender: str | None = None,
-    name: str | None = None,
+    institution: str | None = None,
     run_id: str | None = None,
     limit: int = Query(50, ge=1, le=500),
 ) -> dict:
@@ -379,15 +376,13 @@ def exceptions(
             where.append("severity = %s"); params.append(severity)
         if year:
             where.append("year = %s"); params.append(year)
-        if gender:
-            where.append("gender = %s"); params.append(gender.upper())
-        if name:
-            where.append("name ILIKE %s"); params.append(f"{name}%")
+        if institution:
+            where.append("institution ILIKE %s"); params.append(f"{institution}%")
 
         cur.execute(f"SELECT count(*) AS n FROM qc_exception WHERE {' AND '.join(where)}", params)
         total = cur.fetchone()["n"]
         cur.execute(
-            f"""SELECT id, run_id, rule_id, severity, year, state, gender, name,
+            f"""SELECT id, run_id, rule_id, severity, year, state, institution_id, institution,
                        message, observed, created_at
                 FROM qc_exception WHERE {' AND '.join(where)}
                 ORDER BY severity, id LIMIT %s""",
@@ -404,8 +399,7 @@ def exceptions(
 class TicketBody(BaseModel):
     year: int
     state: str
-    gender: str
-    name: str
+    institution_id: int
     title: str = Field(min_length=5, description="loi la gi, noi cho nguoi khac doc")
     expected_value: int = Field(description="so DUNG — dieu kien nghiem thu QC doi chieu")
     evidence: str | None = None
@@ -422,7 +416,7 @@ def create_ticket(body: TicketBody, p: Me) -> dict:
     ke tiep doc so that len va doi chieu voi con so nay.
     """
     p.require("analyst", "team_lead", "admin")
-    key = (body.year, body.state.upper(), body.gender.upper(), body.name)
+    key = (body.year, body.state.upper(), body.institution_id)
 
     if not p.unrestricted and key[1] not in p.scope_states:
         raise HTTPException(403, f"ban khong co pham vi tren bang {key[1]}")
@@ -430,18 +424,18 @@ def create_ticket(body: TicketBody, p: Me) -> dict:
     with db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """SELECT number FROM fact_current
-                   WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
+                """SELECT deposit, institution FROM fact_current
+                   WHERE year=%s AND state=%s AND institution_id=%s""", key)
             fact = cur.fetchone()
             if not fact:
                 raise HTTPException(404, "khong co dong nao ung voi khoa nay trong lan nap hien tai")
-            if int(fact["number"]) == body.expected_value:
+            if int(fact["deposit"]) == body.expected_value:
                 raise HTTPException(
                     400, f"so hien tai da la {body.expected_value} — khong co gi de sua")
 
             cur.execute(
                 """SELECT id, status FROM ticket
-                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'
+                   WHERE year=%s AND state=%s AND institution_id=%s AND field='deposit'
                      AND status IN ('open','awaiting_verify')""", key)
             if dup := cur.fetchone():
                 raise HTTPException(409, {
@@ -451,22 +445,22 @@ def create_ticket(body: TicketBody, p: Me) -> dict:
 
             cur.execute(
                 """INSERT INTO ticket
-                       (year, state, gender, name, field, title, expected_value,
+                       (year, state, institution_id, institution, field, title, expected_value,
                         observed_at_open, evidence, blocking, from_rule_id,
                         status, created_by)
-                   VALUES (%s,%s,%s,%s,'number',%s,%s,%s,%s,%s,%s,'open',%s)
+                   VALUES (%s,%s,%s,%s,'deposit',%s,%s,%s,%s,%s,%s,'open',%s)
                    RETURNING id, created_at""",
-                (*key, body.title.strip(), str(body.expected_value), str(fact["number"]),
-                 body.evidence, body.blocking, body.from_rule_id, p.email))
+                (*key, fact["institution"], body.title.strip(), str(body.expected_value),
+                 str(fact["deposit"]), body.evidence, body.blocking, body.from_rule_id, p.email))
             t = cur.fetchone()
             audit(cur, p.email, "ticket_open", "ticket", str(t["id"]),
-                  {"number": fact["number"]},
+                  {"deposit": fact["deposit"]},
                   {"expected": body.expected_value, "blocking": body.blocking,
                    "title": body.title, "key": "/".join(map(str, key))})
         conn.commit()
 
     return {"id": t["id"], "status": "open", "key": list(key),
-            "observed_at_open": fact["number"], "expected_value": body.expected_value,
+            "observed_at_open": fact["deposit"], "expected_value": body.expected_value,
             "blocking": body.blocking, "created_at": t["created_at"].isoformat()}
 
 
@@ -560,6 +554,40 @@ def update_ticket(ticket_id: int, body: TicketAction, p: Me) -> dict:
             "blocking": body.blocking if body.action == "set_blocking" else t["blocking"]}
 
 
+# ------------------------------------------------------------- AI Agent
+
+class AgentTurn(BaseModel):
+    role: str = Field(description="user | agent")
+    text: str
+
+
+class AgentChatBody(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[AgentTurn] = Field(default_factory=list, max_length=20)
+
+
+@app.post("/api/agent/chat")
+def agent_chat(body: AgentChatBody, p: Me) -> dict:
+    """Hoi AI Agent ve vi pham QC + ticket TRONG PHAM VI cua nguoi hoi.
+
+    Agent chi doc — no doc lai Issue Log (qc_exception) va ticket dang mo
+    (bang chung nam o cot evidence) o moi luot hoi, khong nho gi giua cac
+    lan goi. No khong dong ticket, khong ky ban, khong sua so: ba viec do
+    van chi lam duoc qua co che da co (QC Runner, POST /api/release, mo
+    ticket). Xem SYSTEM_PROMPT trong app/agent.py cho day du gioi han.
+    """
+    with db() as conn, conn.cursor() as cur:
+        context = agent.build_context(cur, p)
+
+    reply = agent.ask(body.message, [t.model_dump() for t in body.history], context)
+    return {
+        "reply": reply,
+        "run_id": context.get("run_id"),
+        "violation_count": sum(r["n"] for r in context.get("by_rule", [])),
+        "ticket_count": len(context.get("tickets", [])),
+    }
+
+
 # ---------------------------------------------------------------- release
 
 class ReleaseBody(BaseModel):
@@ -593,7 +621,7 @@ def release(body: ReleaseBody, p: Me) -> dict:
                     "loi": "con ticket dang chan phat hanh",
                     "so_ticket": len(blockers),
                     "ticket": [{"id": t["id"], "title": t["title"],
-                                "khoa": f"{t['state']}/{t['gender']}/{t['year']}/{t['name']}",
+                                "khoa": f"{t['state']}/{t['institution']}/{t['year']}",
                                 "ky_vong": t["expected_value"],
                                 "dang_doc_duoc": t["last_observed"] or t["observed_at_open"],
                                 "status": t["status"]} for t in blockers[:20]],
@@ -686,7 +714,7 @@ def gate(p: Me) -> dict:
     return {
         "locked": bool(blockers) or stale,
         "blocking_tickets": [{"id": t["id"], "title": t["title"],
-                              "khoa": f"{t['state']}/{t['gender']}/{t['year']}/{t['name']}",
+                              "khoa": f"{t['state']}/{t['institution']}/{t['year']}",
                               "status": t["status"]} for t in blockers],
         "open_tickets": len(con_no),
         "violations": {"total": v["total"], "by_severity": v["by_severity"],
@@ -787,7 +815,7 @@ def options(p: Me) -> dict:
         states = [r["state"] for r in cur.fetchall()]
         cur.execute(f"SELECT DISTINCT year FROM fact_current {clause} ORDER BY year DESC", scope_params)
         years = [r["year"] for r in cur.fetchall()]
-    return {"states": states, "years": years, "genders": ["F", "M"],
+    return {"states": states, "years": years,
             "sortable": sorted(SORTABLE)}
 
 
@@ -798,7 +826,6 @@ def summary(
     p: Me,
     state: str | None = None,
     year: int | None = None,
-    gender: str | None = None,
 ) -> dict:
     """So lieu cho dashboard. Mot lan goi thay vi sau lan goi roi rac.
 
@@ -810,13 +837,11 @@ def summary(
     where, params = ([scope_sql], list(scope_params)) if scope_sql else ([], [])
     if year:
         where.append("year = %s"); params.append(year)
-    if gender:
-        where.append("gender = %s"); params.append(gender.upper())
     clause = f"WHERE {' AND '.join(where)}" if where else ""
 
     with db() as conn, conn.cursor() as cur:
         cur.execute(f"""SELECT count(*) AS rows, min(year) AS year_min, max(year) AS year_max,
-                               sum(number)::bigint AS total_number
+                               sum(deposit)::bigint AS total_deposit
                         FROM fact_current {clause}""", params)
         facts = cur.fetchone()
 
@@ -847,8 +872,8 @@ def summary(
 
         # So dong bi gan co = so khoa tu nhien khac nhau dang vi pham.
         cur.execute(
-            f"""SELECT count(DISTINCT (year, state, gender, name)) AS n FROM qc_exception
-                WHERE {base[0]} AND name IS NOT NULL{extra}""", vparams)
+            f"""SELECT count(DISTINCT (year, state, institution_id)) AS n FROM qc_exception
+                WHERE {base[0]} AND institution_id IS NOT NULL{extra}""", vparams)
         flagged = cur.fetchone()["n"]
 
         # Ticket: dem trong pham vi de nguoi dung thay phan viec cua minh,
@@ -884,7 +909,7 @@ def summary(
     stale = bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id"))
     return {
         "scope": "tat ca" if p.unrestricted else sorted(p.scope_states),
-        "filters": {"state": state, "year": year, "gender": gender},
+        "filters": {"state": state, "year": year},
         "facts": facts,
         "exceptions": {"open": sum(by_severity.values()), "by_severity": by_severity,
                        "by_rule": by_rule, "by_state": by_state,
@@ -935,19 +960,19 @@ def exception_detail(exc_id: int, p: Me) -> dict:
         if not p.unrestricted and exc["state"] not in p.scope_states:
             raise HTTPException(403, f"ban khong co pham vi tren bang {exc['state']}")
 
-        key = (exc["year"], exc["state"], exc["gender"], exc["name"])
+        key = (exc["year"], exc["state"], exc["institution_id"])
         fact = ticket = None
         history: list = []
         if all(k is not None for k in key):
             cur.execute(
-                """SELECT year, state, gender, name, run_id, number, market_share,
-                          prev_number, prev_year
+                """SELECT year, state, institution_id, institution, run_id, deposit, deposit_share,
+                          prev_deposit, prev_year
                    FROM fact_current
-                   WHERE year=%s AND state=%s AND gender=%s AND name=%s""", key)
+                   WHERE year=%s AND state=%s AND institution_id=%s""", key)
             fact = cur.fetchone()
             cur.execute(
                 """SELECT * FROM ticket
-                   WHERE year=%s AND state=%s AND gender=%s AND name=%s AND field='number'
+                   WHERE year=%s AND state=%s AND institution_id=%s AND field='deposit'
                    ORDER BY (status IN ('open','awaiting_verify')) DESC, id DESC LIMIT 1""", key)
             ticket = cur.fetchone()
             cur.execute(

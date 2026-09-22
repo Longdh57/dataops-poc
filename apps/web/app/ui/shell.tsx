@@ -17,6 +17,7 @@ const TABS = [
   { href: "/tickets", label: "Ticket", badge: "ticket" },
   { href: "/versions", label: "Phiên bản" },
   { href: "/requests", label: "Yêu cầu dữ liệu" },
+  { href: "/agent", label: "AI Agent" },
 ];
 
 export default function Shell({ children }: { children: ReactNode }) {

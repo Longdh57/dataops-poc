@@ -49,7 +49,7 @@ EXCEL_MAX_ROWS = 1_048_576
 # lam tron cang tho thi cong lai cang lech khoi 100%: o 8 chu so, mot nhom
 # 2.000 ten lech toi ~1e-6. O 10 chu so, lech xuong muc khong ai nhin thay.
 SHARE_DIGITS = 10
-HEADER = ["year", "state", "gender", "name", "number", "market_share"]
+HEADER = ["year", "state", "institution_id", "institution", "deposit", "deposit_share"]
 
 
 def log(m: str) -> None:
@@ -95,9 +95,9 @@ def blocking_tickets(conn) -> list[tuple]:
 def fetch_rows(bq: bigquery.Client, run_ids: list[str], states: list[str] | None):
     """Doc BigQuery theo dung ban ky va dung pham vi.
 
-    ORDER BY dat state, year, gender len truoc co hai tac dung: file doc
-    de, va cac dong cung mot nhom thi phan nam lien nhau — nho do tinh lai
-    thi phan chi can giu MOT nhom trong bo nho.
+    ORDER BY dat state, year len truoc co hai tac dung: file doc de, va
+    cac dong cung mot nhom thi phan nam lien nhau — nho do tinh lai thi
+    phan chi can giu MOT nhom trong bo nho.
     """
     where = ["run_id IN UNNEST(@runs)"]
     params = [bigquery.ArrayQueryParameter("runs", "STRING", run_ids)]
@@ -106,10 +106,10 @@ def fetch_rows(bq: bigquery.Client, run_ids: list[str], states: list[str] | None
         params.append(bigquery.ArrayQueryParameter("states", "STRING", states))
 
     sql = f"""
-        SELECT year, state, gender, name, number, market_share
+        SELECT year, state, institution_id, institution, deposit, deposit_share
         FROM `{PROJECT}.{DATASET}.{TABLE}`
         WHERE {' AND '.join(where)}
-        ORDER BY state, year, gender, number DESC
+        ORDER BY state, year, deposit DESC
     """
     cfg = bigquery.QueryJobConfig(query_parameters=params)
     return bq.query(sql, location=LOCATION, job_config=cfg).result()
@@ -118,14 +118,14 @@ def fetch_rows(bq: bigquery.Client, run_ids: list[str], states: list[str] | None
 def to_rows(rows):
     """Doi dong BigQuery thanh list theo dung thu tu HEADER.
 
-    Khong con nhom lai theo (year, state, gender) nua: viec gom nhom truoc
-    kia chi de tinh lai thi phan sau khi ap override. Khong sua so thi
-    thi phan cua nguon van dung, va job chay thang tung dong — it bo nho
-    hon va it cho sai hon.
+    Khong con nhom lai theo (year, state) nua: viec gom nhom truoc kia chi
+    de tinh lai thi phan sau khi ap override. Khong sua so thi thi phan
+    cua nguon van dung, va job chay thang tung dong — it bo nho hon va it
+    cho sai hon.
     """
     for r in rows:
-        yield [r.year, r.state, r.gender, r.name, r.number,
-               f"{r.market_share:.{SHARE_DIGITS}f}" if r.market_share is not None else ""]
+        yield [r.year, r.state, r.institution_id, r.institution, r.deposit,
+               f"{r.deposit_share:.{SHARE_DIGITS}f}" if r.deposit_share is not None else ""]
 
 
 # ------------------------------------------------------------ dau ban ky

@@ -97,7 +97,7 @@ export default function TicketsPage() {
                   <tr key={t.id}>
                     <td className="mono">{t.id}</td>
                     <td className="mono" style={{ fontSize: 12 }}>
-                      {t.state} · {t.gender} · {t.year} · {t.name}
+                      {t.state} · {t.year} · {t.institution}
                       {t.from_rule_id ? (
                         <div className="tone-muted" style={{ fontSize: 11 }}>từ {t.from_rule_id}</div>
                       ) : (
@@ -228,7 +228,7 @@ function ActionModal({
             Ticket chuyển sang <b>chờ QC xác minh</b>. Nó chỉ đóng khi lần nạp kế tiếp đọc được
             đúng <span className="mono">{ticket.expected_value}</span> ở ô{" "}
             <span className="mono">
-              {ticket.state}/{ticket.gender}/{ticket.year}/{ticket.name}
+              {ticket.state}/{ticket.institution}/{ticket.year}
             </span>
             . Lệch thì ticket tự bật lại kèm số đọc được.
           </>

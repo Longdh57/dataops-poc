@@ -18,13 +18,40 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import psycopg
 import yaml
+from google.cloud import bigquery
+from psycopg.rows import dict_row
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost:5432/dataops")
 RULES_PATH = Path(os.getenv("RULES_PATH", "/srv/rules/rules.yaml"))
+
+# Day anh chup qc_exception len BigQuery cho bao cao/BI phia khach hang.
+# Ung dung VAN doc tu Postgres (khong doi duong doc, tiet kiem chi phi
+# query BigQuery) — day chi la mot ban sao chieu di mot huong.
+MIRROR_QC_TO_BIGQUERY = os.getenv("MIRROR_QC_TO_BIGQUERY") == "1"
+GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "")
+BQ_ANALYTICS_DATASET = os.getenv("BQ_ANALYTICS_DATASET", "dataops_analytics")
+BQ_ANALYTICS_TABLE = os.getenv("BQ_ANALYTICS_TABLE", "qc_exception")
+BQ_LOCATION = os.getenv("BQ_LOCATION", "asia-southeast1")
+
+QC_EXCEPTION_BQ_SCHEMA = [
+    bigquery.SchemaField("id", "INTEGER"),
+    bigquery.SchemaField("run_id", "STRING"),
+    bigquery.SchemaField("rule_id", "STRING"),
+    bigquery.SchemaField("severity", "STRING"),
+    bigquery.SchemaField("year", "INTEGER"),
+    bigquery.SchemaField("state", "STRING"),
+    bigquery.SchemaField("institution_id", "INTEGER"),
+    bigquery.SchemaField("institution", "STRING"),
+    bigquery.SchemaField("message", "STRING"),
+    bigquery.SchemaField("observed", "JSON"),
+    bigquery.SchemaField("created_at", "TIMESTAMP"),
+    bigquery.SchemaField("synced_at", "TIMESTAMP"),
+]
 
 
 SEVERITIES = {"critical", "warning", "info"}
@@ -51,20 +78,20 @@ def verify_tickets(conn: psycopg.Connection, run_id: str) -> dict[str, int]:
     """
     with conn.cursor() as cur:
         cur.execute("""SELECT t.id, t.status, t.expected_value, t.blocking,
-                              t.state, t.gender, t.year, t.name, f.number
+                              t.state, t.institution_id, t.year, t.institution, f.deposit
                        FROM ticket t
                        LEFT JOIN fact_current f
                          ON f.year = t.year AND f.state = t.state
-                        AND f.gender = t.gender AND f.name = t.name
+                        AND f.institution_id = t.institution_id
                        WHERE t.status IN ('open', 'awaiting_verify')
                        ORDER BY t.id""")
         rows = cur.fetchall()
 
     dem = {"dong": 0, "bat_lai": 0, "con_mo": 0}
     with conn.cursor() as cur:
-        for tid, status, expected, blocking, state, gender, year, name, number in rows:
-            quan_sat = None if number is None else str(number)
-            khoa = f"{state}/{gender}/{year}/{name}"
+        for tid, status, expected, blocking, state, institution_id, year, institution, deposit in rows:
+            quan_sat = None if deposit is None else str(deposit)
+            khoa = f"{state}/{institution}/{year}"
 
             if quan_sat is not None and quan_sat == expected:
                 cur.execute(
@@ -133,6 +160,80 @@ def scope_filter(rule: dict) -> tuple[str, list]:
     return "WHERE x.state = ANY(%s)", [[s.upper() for s in scope]]
 
 
+# --------------------------------------------------- day len BigQuery
+
+def qc_exception_rows_for_bigquery(rows: list[dict], synced_at: str) -> list[dict]:
+    """Chuyen dong doc tu Postgres sang dang nap duoc vao BigQuery.
+
+    Tach rieng khoi phan goi API that de test duoc ma khong can BigQuery:
+    datetime phai thanh chuoi ISO, con `observed` (jsonb) giu nguyen vi
+    BigQuery nhan thang object cho cot kieu JSON.
+    """
+    return [
+        {
+            "id": r["id"],
+            "run_id": r["run_id"],
+            "rule_id": r["rule_id"],
+            "severity": r["severity"],
+            "year": r["year"],
+            "state": r["state"],
+            "institution_id": r["institution_id"],
+            "institution": r["institution"],
+            "message": r["message"],
+            "observed": r["observed"],
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+            "synced_at": synced_at,
+        }
+        for r in rows
+    ]
+
+
+def mirror_qc_exception_to_bigquery(conn: psycopg.Connection) -> None:
+    """Day TOAN BO bang qc_exception len BigQuery — anh chup THAY THE.
+
+    Khong tu tich luy lich su rieng ben BigQuery vi khong can: Postgres
+    khong bao gio xoa vi pham cua run_id cu (DELETE trong main() chi dong
+    voi dung run_id vua quet), nen ban sao nay da mang theo du lich su co
+    trong Postgres. WRITE_TRUNCATE moi lan chi dam bao BigQuery khop dung
+    Postgres tai thoi diem day, khong con o rac cua lan day truoc.
+
+    Buoc nay chi phuc vu bao cao/BI phia khach hang tren BigQuery — ung
+    dung van doc/ghi qua Postgres nhu truoc, khong doi duong doc.
+    """
+    if not MIRROR_QC_TO_BIGQUERY:
+        return
+    if not GCP_PROJECT_ID:
+        log("MIRROR_QC_TO_BIGQUERY=1 nhung thieu GCP_PROJECT_ID — bo qua day len BigQuery")
+        return
+
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("""SELECT id, run_id, rule_id, severity, year, state, institution_id, institution,
+                              message, observed, created_at
+                       FROM qc_exception ORDER BY id""")
+        rows = cur.fetchall()
+
+    synced_at = datetime.now(timezone.utc).isoformat()
+    payload = qc_exception_rows_for_bigquery(rows, synced_at)
+    table_id = f"{GCP_PROJECT_ID}.{BQ_ANALYTICS_DATASET}.{BQ_ANALYTICS_TABLE}"
+
+    # Khong lam hong ca lan chay QC vi mot buoc phu: du lieu that (Postgres)
+    # da ghi xong truoc do. Day hong thi log ro, lan chay sau day lai ban
+    # moi nhat — khong can retry rieng.
+    try:
+        bq = bigquery.Client(project=GCP_PROJECT_ID)
+        job_config = bigquery.LoadJobConfig(
+            schema=QC_EXCEPTION_BQ_SCHEMA,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        )
+        job = bq.load_table_from_json(
+            payload, table_id, job_config=job_config, location=BQ_LOCATION)
+        job.result()
+        log(f"day {len(payload):,} dong len BigQuery {table_id} (anh chup thay the)")
+    except Exception as exc:  # noqa: BLE001
+        log(f"khong day len BigQuery duoc ({table_id}): {exc}")
+
+
 def main() -> int:
     if not RULES_PATH.exists():
         log(f"khong thay file luat: {RULES_PATH}")
@@ -182,8 +283,8 @@ def main() -> int:
                 cur.execute(
                     f"""
                     INSERT INTO qc_exception
-                        (run_id, rule_id, severity, year, state, gender, name, message, observed)
-                    SELECT %s, %s, %s, x.year, x.state, x.gender, x.name, %s, x.observed
+                        (run_id, rule_id, severity, year, state, institution_id, institution, message, observed)
+                    SELECT %s, %s, %s, x.year, x.state, x.institution_id, x.institution, %s, x.observed
                     FROM ({rule['sql']}) x
                     {where}
                     """,
@@ -205,6 +306,8 @@ def main() -> int:
                            SET qc_run_id=%s, qc_checked_at=now(), rules_version=%s
                            WHERE id=1""", (run_id, rules_version))
         conn.commit()
+
+        mirror_qc_exception_to_bigquery(conn)
 
         with conn.cursor() as cur:
             cur.execute("""SELECT severity, count(*) FROM qc_exception

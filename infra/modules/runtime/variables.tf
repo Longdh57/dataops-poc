@@ -64,6 +64,11 @@ variable "bq_dataset" {
   type    = string
   default = "dataops_src"
 }
+variable "bq_analytics_dataset" {
+  description = "Dataset QC Job day ban sao qc_exception vao (P7)"
+  type        = string
+  default     = "dataops_analytics"
+}
 variable "owner_email" {
   description = "Tai khoan duoc seed voi vai tro admin"
   type        = string

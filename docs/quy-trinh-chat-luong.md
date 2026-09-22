@@ -91,9 +91,9 @@ mô tả bằng lời, mà là mệnh đề QC chạy được:
 
 ```
 ticket #123
-  khóa       : (2024, TX, F, Emma)
-  hiện tại   : number = 20
-  kỳ vọng    : number = 10
+  khóa       : (2024, TX, institution_id=3510 "Bank of America, National Association")
+  hiện tại   : deposit = 20000
+  kỳ vọng    : deposit = 10000
   bằng chứng : <link / ảnh / ghi chú>
   chặn ký    : có
 ```

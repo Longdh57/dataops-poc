@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # Cloud Run Job sinh file deliverable
     export_job_name: str = "dataops-export"
 
+    # Model Gemini goi qua Vertex AI cho AI Agent (P7). Dung ADC cua
+    # service account dataops-api, khong can API key.
+    agent_model: str = "gemini-2.5-flash"
+
     # Bat buoc verify IAP JWT. Chi dat false khi chay local hoac khi
     # IAP chua bat duoc — luc do danh tinh lay tu header X-Dev-User.
     require_iap: bool = False

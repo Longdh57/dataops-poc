@@ -10,11 +10,10 @@ import { useCallback, useMemo } from "react";
 export type Filters = {
   state?: string;
   year?: string;
-  gender?: string;
-  name?: string;
+  institution?: string;
 };
 
-const KEYS: (keyof Filters)[] = ["state", "year", "gender", "name"];
+const KEYS: (keyof Filters)[] = ["state", "year", "institution"];
 
 export function useFilters() {
   const sp = useSearchParams();

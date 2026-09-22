@@ -17,9 +17,9 @@ write_csv = export_main.write_csv
 class Row:
     """Gia lap mot dong tra ve tu BigQuery."""
 
-    def __init__(self, year, state, gender, name, number, market_share):
-        self.year, self.state, self.gender = year, state, gender
-        self.name, self.number, self.market_share = name, number, market_share
+    def __init__(self, year, state, institution_id, institution, deposit, deposit_share):
+        self.year, self.state, self.institution_id = year, state, institution_id
+        self.institution, self.deposit, self.deposit_share = institution, deposit, deposit_share
 
 
 def ban_ky(**kw):
@@ -43,8 +43,8 @@ def test_file_mang_dung_so_cua_nguon():
     Day la ly do ca lop override bi bo: truoc kia file ban ra va BigQuery
     co the khac nhau ma khong ai phat hien.
     """
-    out = list(to_rows([Row(2021, "CA", "F", "Emma", 60, 0.6),
-                        Row(2021, "CA", "F", "Olivia", 40, 0.4)]))
+    out = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, 0.6),
+                        Row(2021, "CA", 3511, "Wells Fargo", 40, 0.4)]))
     assert [r[4] for r in out] == [60, 40]
     assert [r[5] for r in out] == ["0.6000000000", "0.4000000000"]
     # Khong con cot `da_sua`: khong co gi de danh dau nua.
@@ -52,19 +52,19 @@ def test_file_mang_dung_so_cua_nguon():
 
 
 def test_thi_phan_rong_khi_nguon_khong_co():
-    out = list(to_rows([Row(2021, "CA", "F", "Emma", 60, None)]))
+    out = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, None)]))
     assert out[0][5] == ""
 
 
 def test_ghi_csv_du_dong_va_du_tieu_de(tmp_path):
-    rows = list(to_rows([Row(2021, "CA", "F", "Emma", 60, 0.6)]))
+    rows = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, 0.6)]))
     path = tmp_path / "x.csv"
     n, canh_bao = write_csv(str(path), rows)
 
     assert n == 1 and canh_bao is None
     dong = path.read_text().splitlines()
-    assert dong[0] == "year,state,gender,name,number,market_share"
-    assert dong[1] == "2021,CA,F,Emma,60,0.6000000000"
+    assert dong[0] == "year,state,institution_id,institution,deposit,deposit_share"
+    assert dong[1] == "2021,CA,3510,Bank of America,60,0.6000000000"
 
 
 def test_csv_khong_bi_nhet_dau_ban_ky_vao_giua_du_lieu(tmp_path):
@@ -72,7 +72,7 @@ def test_csv_khong_bi_nhet_dau_ban_ky_vao_giua_du_lieu(tmp_path):
 
     Dau phai nam o file rieng, nen write_csv nhan `stamp` roi bo qua.
     """
-    rows = list(to_rows([Row(2021, "CA", "F", "Emma", 60, 0.6)]))
+    rows = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, 0.6)]))
     path = tmp_path / "x.csv"
     write_csv(str(path), rows, stamp_lines(ban_ky(), None, 1))
 
@@ -120,7 +120,7 @@ def test_xlsx_co_sheet_bia_ban_ky_dung_truoc_du_lieu(tmp_path):
     from openpyxl import load_workbook
 
     job = ban_ky(violations={"tang_dot_bien": 23}, open_tickets=[5])
-    rows = list(to_rows([Row(2021, "CA", "F", "Emma", 60, 0.6)]))
+    rows = list(to_rows([Row(2021, "CA", 3510, "Bank of America", 60, 0.6)]))
     path = tmp_path / "x.xlsx"
     n, _ = export_main.write_xlsx(str(path), rows, stamp_lines(job, None, 1))
 
@@ -138,7 +138,7 @@ def test_xlsx_vuot_gioi_han_thi_tach_sheet_chu_khong_cat_bot(tmp_path, monkeypat
     monkeypatch.setattr(export_main, "EXCEL_MAX_ROWS", 5)
     from openpyxl import load_workbook
 
-    rows = [[2021, "CA", "F", f"Ten{i}", i, "0.1"] for i in range(12)]
+    rows = [[2021, "CA", 3510 + i, f"Ngan hang {i}", i, "0.1"] for i in range(12)]
     path = tmp_path / "x.xlsx"
     n, canh_bao = export_main.write_xlsx(str(path), rows)
 
