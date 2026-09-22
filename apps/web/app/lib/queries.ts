@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
-import type { Gate, Me, Options, Summary, Ticket, VersionInfo } from "./types";
+import type { Gate, Me, Options, RulesCatalog, Summary, Ticket, VersionInfo } from "./types";
 
 export const useMe = () =>
   useQuery({ queryKey: ["me"], queryFn: () => gw<Me>("/me"), staleTime: 60_000 });
@@ -49,4 +49,13 @@ export const useSummary = (f: Filters) =>
   useQuery({
     queryKey: ["summary", f],
     queryFn: () => gw<Summary>(`/summary${qs(f)}`),
+  });
+
+/** Bo luat trong rules/rules.yaml. Chi goi khi hop xem luat duoc mo ra —
+ *  file khong doi giua hai lan bam nen giu cache lau. */
+export const useRules = () =>
+  useQuery({
+    queryKey: ["rules"],
+    queryFn: () => gw<RulesCatalog>("/rules"),
+    staleTime: 300_000,
   });

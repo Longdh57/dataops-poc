@@ -275,6 +275,7 @@ Tu P6, vi pham luat KHONG con khoa cong — xem muc [Quy trinh chat luong
 | GET | `/api/tickets` | ticket trong pham vi |
 | PATCH | `/api/tickets/{id}` | mark_fixed / set_blocking / cancel. KHONG co close |
 | GET | `/api/gate` | mon no + hai thu khoa cung |
+| GET | `/api/rules` | bo luat trong `rules/rules.yaml` + noi dung tho cua file |
 | POST | `/api/release` | ky ban so lieu (team_lead), kem phieu duyet |
 | POST | `/api/exports` | 202 + job_id |
 
@@ -294,6 +295,18 @@ Nguong dat tu profile du lieu that:
 
 Tu P6, `severity` chi con de xep thu tu doc va de loc — no khong quyet dinh
 duoc gi nua. Chi ticket moi chan phat hanh.
+
+Bo luat doc duoc TU TRONG UNG DUNG: nut **Xem bo luat** tren Dashboard
+(the "Vi pham theo luat") va tren trang Vi pham mo ra ca danh sach luat —
+id, muc, pham vi, cau nguoi dung doc, SQL — lan YAML goc nguyen van. Ai
+doc bao cao cung doi chieu duoc `rule_id` voi luat that ma khong can mo
+repo. API doc file qua `app/rules.py`, nen image API build tu GOC repo de
+kem thu muc `rules/` (xem `apps/api/Dockerfile`).
+
+Hop nay hien hai version canh nhau va co ly do: version trong FILE (se
+chay o lan QC ke tiep) va version QC DA CHAY tren lan nap hien tai. Lech
+nhau thi co canh bao — khong thi nguoi doc se doi chieu vi pham voi mot
+bo luat chua tung chay.
 
 ```bash
 gcloud run jobs execute dataops-qc --region=asia-southeast1

@@ -76,15 +76,17 @@ export function ErrBox({ error }: { error: unknown }) {
 }
 
 export function Modal({
-  title, children, onClose,
+  title, children, onClose, wide,
 }: {
   title: ReactNode;
   children: ReactNode;
   onClose: () => void;
+  /** Noi dung la code / YAML — can be ngang va cuon doc trong hop. */
+  wide?: boolean;
 }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal${wide ? " modal-wide" : ""}`} onClick={(e) => e.stopPropagation()}>
         <h2 style={{ marginBottom: 10 }}>{title}</h2>
         {children}
       </div>

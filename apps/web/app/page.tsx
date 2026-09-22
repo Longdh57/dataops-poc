@@ -12,6 +12,7 @@ import { useFmt, useI18n } from "@/app/i18n/context";
 import { useFilters } from "@/app/lib/filters";
 import { useGate, useSummary } from "@/app/lib/queries";
 import { ErrBox, Loading, Stat } from "@/app/ui/bits";
+import RulesButton from "@/app/ui/rules-panel";
 
 export default function DashboardPage() {
   const { t, tn } = useI18n();
@@ -22,6 +23,10 @@ export default function DashboardPage() {
 
   if (error) return <ErrBox error={error} />;
   if (isPending || !s) return <Loading what={t("dash.loading")} />;
+
+  // Dem vi pham theo luat cua lan nap hien tai, de hop bo luat hien kem
+  // moi luat "dang bat duoc bao nhieu o".
+  const countsByRule = Object.fromEntries(s.exceptions.by_rule.map((r) => [r.rule_id, r.n]));
 
   const crit = s.exceptions.by_severity.critical ?? 0;
   const warn = s.exceptions.by_severity.warning ?? 0;
@@ -84,10 +89,15 @@ export default function DashboardPage() {
       <div className="split" style={{ marginBottom: 18 }}>
         <div className="card">
           <div className="card-head">
-            <h2>{t("dash.byRule.title")}</h2>
-            <p className="sub">
-              {tn("dash.byRule.sub", { file: <span className="mono">rules/rules.yaml</span> })}
-            </p>
+            <div>
+              <h2>{t("dash.byRule.title")}</h2>
+              <p className="sub">
+                {tn("dash.byRule.sub", { file: <span className="mono">rules/rules.yaml</span> })}
+              </p>
+            </div>
+            {/* Bieu do chi cho thay rule_id va so luong. Nut nay tra loi
+                cau ke tiep — luat do noi gi — ma khong bat mo repo. */}
+            <RulesButton counts={countsByRule} />
           </div>
           {s.exceptions.by_rule.length ? (
             <ResponsiveContainer width="100%" height={Math.max(140, s.exceptions.by_rule.length * 44)}>

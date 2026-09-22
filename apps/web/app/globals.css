@@ -293,6 +293,44 @@ table.t tr:last-child td { border-bottom: 0; }
   width: 100%;
   box-shadow: 0 18px 48px rgba(19, 26, 33, 0.24);
 }
+/* Hop chua code (SQL, YAML): rong hon va tu cuon doc — noi dung dai bao
+   nhieu cung khong day nut dong ra ngoai man hinh. */
+.modal-wide { max-width: 880px; max-height: 86vh; overflow-y: auto; }
+
+/* ------------------------------------------------------------- bo luat QC */
+
+.rule-list { display: flex; flex-direction: column; gap: 10px; }
+.rule {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface2);
+  padding: 10px 12px;
+}
+.rule-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.rule-id { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+.rule-msg { margin: 6px 0 0; font-size: 12.5px; color: var(--ink2); line-height: 1.5; }
+.rule details { margin-top: 7px; }
+.rule summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--mono);
+}
+.rule summary:hover { color: var(--accent); }
+
+.code-block {
+  margin: 7px 0 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--ink2);
+  white-space: pre;
+  overflow-x: auto;
+}
 
 .spin { color: var(--muted); font-size: 13px; padding: 14px 2px; }
 .err {

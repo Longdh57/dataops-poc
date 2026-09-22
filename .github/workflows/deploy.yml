@@ -36,9 +36,11 @@ jobs:
       - name: Dang nhap Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
+      # Build tu GOC repo: image API kem thu muc rules/ de man hinh
+      # "Bo luat" doc duoc file luat.
       - name: Build va push API
         run: |
-          docker build -t "$REGISTRY/api:${{ steps.meta.outputs.tag }}" apps/api
+          docker build -f apps/api/Dockerfile -t "$REGISTRY/api:${{ steps.meta.outputs.tag }}" .
           docker push "$REGISTRY/api:${{ steps.meta.outputs.tag }}"
 
       - name: Build va push Web

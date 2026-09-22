@@ -18,6 +18,7 @@ export const vi = {
   "common.confirm": "Xác nhận",
   "common.sending": "Đang gửi…",
   "common.none": "—",
+  "common.close": "Đóng",
 
   "meta.title": "Data Operations WebApp",
   "meta.description": "Nơi xem số, sửa sổ và chặn số sai đi ra ngoài",
@@ -142,6 +143,23 @@ export const vi = {
   "dash.delta.empty":
     "Chưa có bản nào được ký. Sang {link} để ký bản đầu tiên — còn nợ vẫn ký được, miễn là kèm phiếu duyệt.",
   "dash.delta.emptyLink": "trang phiên bản",
+  // ------------------------------------------------------------- bộ luật
+  "rules.button": "Xem bộ luật",
+  "rules.title": "Bộ luật QC",
+  "rules.sub": "{n} luật · version {v} · khai báo trong {file}",
+  "rules.loading": "bộ luật",
+  "rules.tab.list": "DANH SÁCH",
+  "rules.tab.raw": "YAML GỐC",
+  "rules.outOfSync":
+    "File luật đang là version {file}, nhưng lần QC gần nhất chạy version {applied} — " +
+    "danh sách vi phạm trên màn hình được sinh ra dưới bộ luật cũ. Chạy lại QC để hai bên khớp nhau.",
+  "rules.scope": "chỉ {states}",
+  "rules.scopeAll": "mọi bảng",
+  "rules.showSql": "SQL của luật",
+  "rules.countsNote": "Số vi phạm đếm trên lần nạp hiện tại, trong phạm vi và bộ lọc của bạn.",
+  "rules.hits": "{n} vi phạm",
+  "rules.noHits": "không vi phạm",
+
   "dash.byState.title": "Vi phạm theo khu vực",
   "dash.byState.lastSigned": "Bản ký gần nhất: {label}",
   "dash.byState.noneSigned": "Chưa ký bản nào",

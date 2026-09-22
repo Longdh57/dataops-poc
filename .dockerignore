@@ -1,0 +1,15 @@
+# Context cua image api/ va jobs/ la GOC repo — khong gui theo nhung thu
+# nang va khong bao gio duoc COPY vao image.
+.git
+.github
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.terraform
+*.tfstate*
+*.tfplan
+.env
+.venv
+.idea
+implement-plan.html
