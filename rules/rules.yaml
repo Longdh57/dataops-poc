@@ -1,5 +1,14 @@
-# Bo luat QC khai bao bang cau hinh — them luat moi chi can them mot muc
-# o day, khong sua code.
+# !! Tu P10 day la FILE SEED, khong phai bo luat dang chay !!
+#
+# Bo luat that nam trong Postgres (bang qc_rule, version o qc_ruleset) va
+# duoc them/sua/tat/xoa ngay trong ung dung (hop "Bo luat QC", team_lead /
+# admin). Migration p10 doc file nay DUNG MOT LAN de seed bang qc_rule khi
+# no con rong — sua file nay KHONG doi gi tren he thong dang chay.
+#
+# Muon file nay khop bo luat hien tai (de dung moi truong moi): hop Bo luat
+# QC -> tab YAML -> Tai YAML -> thay file nay -> commit.
+#
+# Dinh dang duoi day giu nguyen, va cung la dinh dang ung dung xuat ra.
 #
 # Moi luat co nam phan:
 #   id       — dinh danh, hien tren giao dien va trong bang qc_exception

@@ -250,10 +250,28 @@ def qc_state(cur) -> dict:
     danh sach vi pham tren man hinh la cua lan nap truoc, va phieu duyet
     se noi ve mot thu khong con ton tai.
     """
-    cur.execute("""SELECT last_run_id, last_row_count, source_run_ids,
-                          qc_run_id, qc_checked_at, rules_version
-                   FROM sync_state WHERE id = 1""")
+    cur.execute("""SELECT s.last_run_id, s.last_row_count, s.source_run_ids,
+                          s.qc_run_id, s.qc_checked_at, s.rules_version,
+                          (SELECT version FROM qc_ruleset WHERE id = 1) AS ruleset_version
+                   FROM sync_state s WHERE s.id = 1""")
     return cur.fetchone() or {}
+
+
+def qc_stale(st: dict) -> str | None:
+    """Vi sao danh sach vi pham dang hien KHONG phai cua du lieu + bo luat
+    hien tai. None = QC da kiem dung lan nap nay, dung bo luat nay.
+
+    Hai ly do, va P10 them ly do thu hai: bo luat vua duoc sua trong ung
+    dung ma QC chua chay lai. Ky luc do la ky mot phieu duyet noi ve vi
+    pham cua bo luat CU.
+    """
+    if not st.get("last_run_id"):
+        return None
+    if st.get("qc_run_id") != st["last_run_id"]:
+        return "run"
+    if st.get("ruleset_version") is not None and st.get("rules_version") != st["ruleset_version"]:
+        return "rules"
+    return None
 
 
 def violations_of(cur, run_id: str) -> dict:
@@ -344,38 +362,235 @@ def open_tickets(cur, only_blocking: bool = False) -> list[dict]:
 
 
 # --------------------------------------------------------------- bo luat QC
+#
+# Tu P10 bo luat song trong Postgres (qc_rule / qc_ruleset /
+# qc_ruleset_snapshot) va sua duoc ngay trong ung dung. Ba dieu giu nguyen:
+#
+# - Moi lan ghi thanh cong la MOT version moi, +1, cung transaction voi
+#   snapshot toan bo bo luat va audit_log. Ban ky ghi version QC DA CHAY,
+#   nen tai hien duoc bo luat da duyet.
+# - Khong luu luat hong: cau truc kiem truoc, SQL chay thu trong
+#   transaction chi doc ngay truoc khi ghi — khong tin ket qua preview
+#   client gui len.
+# - Luat la quy tac chung, khong theo pham vi bang: ai cung DOC duoc, chi
+#   team_lead / admin SUA duoc.
+
+EDITORS = ("team_lead", "admin")
+
+
+class RuleBody(BaseModel):
+    severity: str
+    scope: list[str] | None = None
+    message: str
+    sql: str
+    enabled: bool = True
+    # Khoa lac quan: version bo luat nguoi sua dang nhin thay.
+    expected_version: int
+
+
+class RuleCreateBody(RuleBody):
+    id: str
+
+
+class RulePreviewBody(BaseModel):
+    sql: str
+    scope: list[str] | None = None
+
+
+def _rule_json(r: dict) -> dict:
+    """Luat dang JSON cho audit_log — before/after doc duoc bang mat."""
+    return {k: r.get(k) for k in ("id", "severity", "scope", "message", "sql", "enabled")}
+
+
+def _check_rule_or_422(rule: dict, *, check_id: bool) -> None:
+    """Hai lop: cau truc, roi SQL chay that tren connection rieng, chi doc."""
+    loi = rules_file.validate_rule(rule, check_id=check_id)
+    if loi:
+        raise HTTPException(422, {"errors": loi, "missing_columns": []})
+    with db() as conn:
+        res = rules_file.dry_run(conn, rule["sql"], rule["scope"], sample=0)
+    if res["error"]:
+        raise HTTPException(422, {"errors": [f"SQL loi: {res['error']}"], "missing_columns": []})
+    if res["missing_columns"]:
+        raise HTTPException(422, {
+            "errors": [f"SQL thieu cot: {', '.join(res['missing_columns'])}"],
+            "missing_columns": res["missing_columns"]})
+
+
+def _lock_ruleset(cur, expected: int) -> int:
+    """Khoa dong qc_ruleset toi het transaction, doi chieu version.
+
+    Hai nguoi sua cung luc: nguoi sau nhan 409 kem ai vua sua, thay vi ghi
+    de len thay doi cua nguoi truoc ma khong ai biet.
+    """
+    cur.execute("SELECT version, updated_by, updated_at FROM qc_ruleset WHERE id = 1 FOR UPDATE")
+    st = cur.fetchone()
+    if not st:
+        raise HTTPException(503, "chua co bo luat — chay migration p10 (alembic upgrade head)")
+    if st["version"] != expected:
+        raise HTTPException(409, {
+            "message": "bo luat da duoc nguoi khac sua — tai lai roi sua tiep",
+            "current_version": st["version"], "expected_version": expected,
+            "updated_by": st["updated_by"],
+            "updated_at": st["updated_at"].isoformat() if st["updated_at"] else None})
+    return st["version"]
+
+
+def _bump(cur, actor: str, old: int, note: str) -> int:
+    """Version +1 va snapshot toan bo bo luat SAU thay doi — cung transaction."""
+    new = old + 1
+    cur.execute("""UPDATE qc_ruleset SET version=%s, updated_by=%s, updated_at=now(), note=%s
+                   WHERE id = 1""", (new, actor, note))
+    snap = rules_file.snapshot_rows(rules_file.current_rules(cur))
+    cur.execute("""INSERT INTO qc_ruleset_snapshot (version, rules, created_by, note)
+                   VALUES (%s, %s, %s, %s)""", (new, json.dumps(snap), actor, note))
+    return new
+
 
 @app.get("/api/rules")
-def rules(p: Me) -> dict:
-    """Bo luat dang khai bao trong rules/rules.yaml — doc len de xem.
+def rules(p: Me, version: int | None = Query(None, ge=1)) -> dict:
+    """Bo luat — hien tai, hoac dung mot version cu (`?version=`) tu snapshot.
 
-    Tra ve mot luc hai thu, va ca hai deu can:
+    Tra ve mot luc hai version, va ca hai deu can:
 
-    - bo luat trong FILE — thu se chay o lan QC ke tiep;
-    - `applied_version` — version bo luat ma QC da chay THAT tren lan nap
-      hien tai.
+    - `version` — bo luat hien tai, thu se chay o lan QC ke tiep;
+    - `applied_version` — bo luat QC da chay THAT tren lan nap hien tai.
 
-    Hai so nay lech nhau la chuyen binh thuong (vua sua file, chua chay
-    lai QC) nhung nguoi doc phai thay: khong thi ho doi chieu danh sach
-    vi pham voi mot bo luat chua tung chay.
-
-    Endpoint chi doc. Sua luat van la sua file roi chay lai QC Runner.
+    Lech nhau la chuyen binh thuong (vua sua, chua chay lai QC) nhung
+    nguoi doc phai thay: khong thi ho doi chieu danh sach vi pham voi mot
+    bo luat chua tung chay.
     """
-    try:
-        catalog = rules_file.load()
-    except FileNotFoundError as exc:
-        raise HTTPException(503, str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(500, str(exc)) from exc
-
     with db() as conn, conn.cursor() as cur:
+        try:
+            catalog = rules_file.load_from_db(cur, version)
+        except Exception as exc:  # noqa: BLE001 — bang chua co = chua migrate
+            raise HTTPException(503, f"chua doc duoc bo luat — da chay migration p10 chua? {exc}") from exc
+        if catalog is None:
+            raise HTTPException(404, f"khong co snapshot cho version {version}")
         st = qc_state(cur)
 
     applied = st.get("rules_version")
+    current = st.get("ruleset_version")
     return {**catalog,
+            "current_version": current,
             "applied_version": applied,
             "qc_run_id": st.get("qc_run_id"),
-            "in_sync": applied is not None and applied == catalog["version"]}
+            "in_sync": applied is not None and applied == current,
+            "can_edit": p.has(*EDITORS) and not catalog["snapshot"]}
+
+
+@app.post("/api/rules/preview")
+def preview_rule(body: RulePreviewBody, p: Me) -> dict:
+    """Chay thu SQL cua luat: cot, so dong bat duoc (da ap scope), 20 dong
+    mau. Khong ghi gi. Nguoi sua NHIN THAY luat bat duoc gi truoc khi luu."""
+    p.require(*EDITORS)
+    rule = rules_file.normalize({"id": "preview", "severity": "info", "message": "-",
+                                 "sql": body.sql, "scope": body.scope})
+    loi = [m for m in rules_file.validate_rule(rule, check_id=False)
+           if "'sql'" in m or "'scope'" in m]
+    if loi:
+        raise HTTPException(422, {"errors": loi, "missing_columns": []})
+    with db() as conn:
+        return rules_file.dry_run(conn, rule["sql"], rule["scope"])
+
+
+@app.post("/api/rules", status_code=201)
+def create_rule(body: RuleCreateBody, p: Me) -> dict:
+    p.require(*EDITORS)
+    rule = rules_file.normalize(body.model_dump())
+    _check_rule_or_422(rule, check_id=True)
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            old = _lock_ruleset(cur, body.expected_version)
+            cur.execute("SELECT 1 FROM qc_rule WHERE id = %s", (rule["id"],))
+            if cur.fetchone():
+                raise HTTPException(409, {"message": f"da co luat '{rule['id']}'",
+                                          "current_version": old})
+            cur.execute("SELECT coalesce(max(sort_order), 0) + 10 AS n FROM qc_rule")
+            order = cur.fetchone()["n"]
+            cur.execute(
+                f"""INSERT INTO qc_rule (id, severity, scope, message, sql, enabled,
+                                         sort_order, created_by, updated_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    RETURNING {rules_file.RULE_COLS}""",
+                (rule["id"], rule["severity"], json.dumps(rule["scope"]) if rule["scope"] else None,
+                 rule["message"], rule["sql"], body.enabled, order, p.email, p.email))
+            row = cur.fetchone()
+            new = _bump(cur, p.email, old, f"them {rule['id']}")
+            audit(cur, p.email, "rule_create", "qc_rule", rule["id"], None,
+                  {**_rule_json(row), "version": new})
+        conn.commit()
+    return {"rule": row, "version": new}
+
+
+@app.put("/api/rules/{rule_id}")
+def update_rule(rule_id: str, body: RuleBody, p: Me) -> dict:
+    """Sua toan bo mot luat, ke ca bat/tat. `id` bat bien — xem models.QcRule."""
+    p.require(*EDITORS)
+    rule = rules_file.normalize({**body.model_dump(), "id": rule_id})
+    _check_rule_or_422(rule, check_id=False)
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            old = _lock_ruleset(cur, body.expected_version)
+            cur.execute(f"SELECT {rules_file.RULE_COLS} FROM qc_rule WHERE id = %s", (rule_id,))
+            before = cur.fetchone()
+            if not before:
+                raise HTTPException(404, f"khong co luat '{rule_id}'")
+            cur.execute(
+                f"""UPDATE qc_rule SET severity=%s, scope=%s, message=%s, sql=%s, enabled=%s,
+                                       updated_by=%s, updated_at=now()
+                    WHERE id = %s RETURNING {rules_file.RULE_COLS}""",
+                (rule["severity"], json.dumps(rule["scope"]) if rule["scope"] else None,
+                 rule["message"], rule["sql"], body.enabled, p.email, rule_id))
+            row = cur.fetchone()
+            new = _bump(cur, p.email, old, f"sua {rule_id}")
+            audit(cur, p.email, "rule_update", "qc_rule", rule_id,
+                  _rule_json(before), {**_rule_json(row), "version": new})
+        conn.commit()
+    return {"rule": row, "version": new}
+
+
+@app.delete("/api/rules/{rule_id}")
+def delete_rule(rule_id: str, p: Me, expected_version: int = Query(...)) -> dict:
+    """Xoa han. Luat van con trong snapshot cu va audit_log; vi pham cua
+    cac lan nap cu giu nguyen rule_id. Muon ngung tam thi tat, dung xoa."""
+    p.require(*EDITORS)
+    with db() as conn:
+        with conn.cursor() as cur:
+            old = _lock_ruleset(cur, expected_version)
+            cur.execute(f"DELETE FROM qc_rule WHERE id = %s RETURNING {rules_file.RULE_COLS}",
+                        (rule_id,))
+            before = cur.fetchone()
+            if not before:
+                raise HTTPException(404, f"khong co luat '{rule_id}'")
+            new = _bump(cur, p.email, old, f"xoa {rule_id}")
+            audit(cur, p.email, "rule_delete", "qc_rule", rule_id,
+                  _rule_json(before), {"version": new})
+        conn.commit()
+    return {"id": rule_id, "version": new}
+
+
+@app.post("/api/rules/run-qc", status_code=202)
+def run_qc(p: Me) -> dict:
+    """Chay QC Runner ngay, khong cho Scheduler (5 phut).
+
+    Cung khuon voi /api/rebuild: khong goi duoc job nghia la khong co gi
+    xay ra — bao that bang 503. QC van tu chay lai o chu ky ke tiep vi no
+    thay version bo luat da doi.
+    """
+    p.require(*EDITORS)
+    triggered, note = run_job(settings.qc_job_name, {"FORCE_QC": "1"})
+    if not triggered:
+        raise HTTPException(503, note)
+    with db() as conn:
+        with conn.cursor() as cur:
+            audit(cur, p.email, "qc_run", "qc_job", settings.qc_job_name, None,
+                  {"operation": note})
+        conn.commit()
+    return {"job": settings.qc_job_name, "operation": note,
+            "note": "QC Runner dang chay — banner lech version se tat khi xong"}
 
 
 # -------------------------------------------------------------- vi pham QC
@@ -425,8 +640,9 @@ def exceptions(
         rows = cur.fetchall()
 
     return {"total": total, "rows": rows, "run_id": target,
-            "qc_stale": bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id")),
-            "rules_version": st.get("rules_version")}
+            "qc_stale": qc_stale(st) is not None, "qc_stale_reason": qc_stale(st),
+            "rules_version": st.get("rules_version"),
+            "ruleset_version": st.get("ruleset_version")}
 
 
 # ----------------------------------------------------------------- ticket
@@ -657,13 +873,23 @@ def release(body: ReleaseBody, p: Me) -> dict:
             st = qc_state(cur)
             if not st.get("last_run_id"):
                 raise HTTPException(409, "chua co lan dong bo nao de ky")
-            if st.get("qc_run_id") != st["last_run_id"]:
+            stale = qc_stale(st)
+            if stale == "run":
                 raise HTTPException(409, {
                     "loi": "QC chua kiem lan nap hien tai",
                     "lan_nap": st["last_run_id"],
                     "qc_da_kiem": st.get("qc_run_id"),
                     "y_nghia": "danh sach vi pham dang hien la cua lan nap truoc — "
                                "cho QC chay xong roi ky",
+                })
+            if stale == "rules":
+                raise HTTPException(409, {
+                    "loi": "QC chua chay duoi bo luat hien tai",
+                    "bo_luat_hien_tai": st["ruleset_version"],
+                    "qc_da_chay_duoi": st.get("rules_version"),
+                    "y_nghia": "bo luat vua duoc sua — danh sach vi pham dang hien la cua "
+                               "bo luat cu. Bam 'Chay QC ngay' trong hop Bo luat, hoac cho "
+                               "QC tu chay (toi da 5 phut), roi ky",
                 })
 
             v = violations_of(cur, st["last_run_id"])
@@ -735,7 +961,8 @@ def gate(p: Me) -> dict:
                        FROM signed_version ORDER BY id DESC LIMIT 1""")
         last = cur.fetchone()
 
-    stale = bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id"))
+    why = qc_stale(st)
+    stale = why is not None
     return {
         "locked": bool(blockers) or stale,
         "blocking_tickets": [{"id": t["id"], "title": t["title"],
@@ -746,8 +973,10 @@ def gate(p: Me) -> dict:
                        "by_rule": v["by_rule"], "fingerprint": v["fingerprint"]},
         # Con no thi ky duoc, nhung phai kem phieu duyet.
         "needs_approval": bool(v["total"] or con_no),
-        "qc_stale": stale, "run_id": st.get("last_run_id"), "qc_run_id": st.get("qc_run_id"),
+        "qc_stale": stale, "qc_stale_reason": why,
+        "run_id": st.get("last_run_id"), "qc_run_id": st.get("qc_run_id"),
         "rules_version": st.get("rules_version"),
+        "ruleset_version": st.get("ruleset_version"),
         "last_signed": last,
     }
 
@@ -931,7 +1160,8 @@ def summary(
         v_now = violations_of(cur, run) if run else None
 
     rows_now = sync["last_row_count"] if sync else None
-    stale = bool(st.get("last_run_id") and st.get("qc_run_id") != st.get("last_run_id"))
+    why = qc_stale(st)
+    stale = why is not None
     return {
         "scope": "tat ca" if p.unrestricted else sorted(p.scope_states),
         "filters": {"state": state, "year": year},
@@ -943,7 +1173,9 @@ def summary(
                     "awaiting_verify": tickets_by_status.get("awaiting_verify", 0),
                     "blocking": len(blockers)},
         "gate": {"locked": bool(blockers) or stale, "blocking": len(blockers),
-                 "qc_stale": stale,
+                 "qc_stale": stale, "qc_stale_reason": why,
+                 "rules_version": st.get("rules_version"),
+                 "ruleset_version": st.get("ruleset_version"),
                  "needs_approval": bool((v_now and v_now["total"]) or sum(tickets_by_status.values()))},
         "last_signed": signed,
         "delta": {

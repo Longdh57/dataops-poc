@@ -51,11 +51,13 @@ export const useSummary = (f: Filters) =>
     queryFn: () => gw<Summary>(`/summary${qs(f)}`),
   });
 
-/** Bo luat trong rules/rules.yaml. Chi goi khi hop xem luat duoc mo ra —
- *  file khong doi giua hai lan bam nen giu cache lau. */
-export const useRules = () =>
+/** Bo luat QC (bang qc_rule). Chi goi khi hop xem luat duoc mo ra.
+ *  `version` = xem snapshot mot version cu (trang Phien ban). Moi lan
+ *  ghi luat deu invalidate ["rules"], nen cache dai khong lam ai doc sai. */
+export const useRules = (version?: number | null) =>
   useQuery({
-    queryKey: ["rules"],
-    queryFn: () => gw<RulesCatalog>("/rules"),
-    staleTime: 300_000,
+    queryKey: ["rules", version ?? "current"],
+    queryFn: () => gw<RulesCatalog>(`/rules${qs({ version: version ?? undefined })}`),
+    // Snapshot khong bao gio doi. Ban hien tai thi doi khi co nguoi sua.
+    staleTime: version ? Infinity : 60_000,
   });

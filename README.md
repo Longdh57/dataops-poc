@@ -292,14 +292,20 @@ Từ P6, vi phạm luật KHÔNG còn khóa cổng — xem mục [Quy trình ch�
 | GET | `/api/tickets` | ticket trong phạm vi |
 | PATCH | `/api/tickets/{id}` | mark_fixed / set_blocking / cancel. KHÔNG có close |
 | GET | `/api/gate` | món nợ + hai thứ khóa cứng |
-| GET | `/api/rules` | bộ luật trong `rules/rules.yaml` + nội dung thô của file |
+| GET | `/api/rules` | bộ luật trong bảng `qc_rule` + YAML render từ đó; `?version=N` đọc snapshot (P10) |
+| POST | `/api/rules` | thêm luật (team_lead / admin), kèm `expected_version` (P10) |
+| PUT | `/api/rules/{id}` | sửa luật, kể cả bật/tắt. `id` bất biến (P10) |
+| DELETE | `/api/rules/{id}?expected_version=` | xoá luật; vẫn còn trong snapshot cũ (P10) |
+| POST | `/api/rules/preview` | chạy thử SQL của luật: cột, số dòng, 20 dòng mẫu (P10) |
+| POST | `/api/rules/run-qc` | kích hoạt QC Runner ngay, `FORCE_QC=1` (P10) |
 | POST | `/api/release` | ký bản số liệu (team_lead), kèm phiếu duyệt |
 | POST | `/api/exports` | 202 + job_id |
 
 ### Bộ luật QC
 
-`rules/rules.yaml` — thêm luật mới chỉ cần thêm một mục, không sửa code.
-Ngưỡng đặt từ profile dữ liệu thật:
+Từ P10 bộ luật sống trong Postgres (`qc_rule`) và sửa ngay trong ứng dụng — xem
+[CRUD bộ luật QC (P10)](#crud-bộ-luật-qc-p10). `rules/rules.yaml` chỉ còn là seed
+cho migration. Ngưỡng đặt từ profile dữ liệu thật:
 
 | Luật | Mức | Bắt được (chạy thật trên 5 năm FDIC, 31.502 dòng) |
 |---|---|---|
@@ -745,6 +751,27 @@ hai.
 sync về Postgres, QC bắt **634 vi phạm thật** (509 `deposit_negative_or_zero`,
 29 `deposit_spike`, 96 `unusual_deposit_change`), AI Agent trả lời đúng theo
 schema mới, 40 test API + 18 test jobs đều qua.
+
+## CRUD bộ luật QC (P10)
+
+Plan: [implement-plan-qc-rules-crud.md](implement-plan-qc-rules-crud.md).
+Trước P10, đổi một ngưỡng là sửa `rules/rules.yaml` → build lại image API và
+image jobs → deploy → chạy QC. Giờ team lead sửa trong hộp **Bộ luật QC** và
+bộ luật mới có hiệu lực ở lần QC kế tiếp, không deploy gì.
+
+| | |
+|---|---|
+| Migration | `f4b82d6e1a37_p10_bo_luat_trong_db.py` — ba bảng `qc_rule`, `qc_ruleset` (một dòng, version toàn cục), `qc_ruleset_snapshot`; seed từ `rules/rules.yaml` (version 6) và ghi snapshot 6 trước khi ai kịp sửa. Không tìm thấy file seed thì dừng hẳn, không tạo bộ luật rỗng |
+| API | 5 endpoint mới trong bảng Endpoint ở trên. Mỗi lần ghi: validate → chạy thử SQL chỉ đọc → ghi → version +1 → snapshot → `audit_log`, trong một transaction. Hai người sửa cùng lúc: người sau nhận 409 kèm tên người vừa sửa |
+| Chặn luật hỏng | Cấu trúc (id slug, severity, scope là mã bang), SQL chạy được, đủ 5 cột, không có dấu `;`. SQL chạy trong transaction `READ ONLY` + timeout 10s, và **mọi lệnh đều mang tham số** để Postgres không nhận nhiều lệnh một lần |
+| QC Runner | Đọc luật đang bật từ DB. Bỏ qua chỉ khi *cùng lần nạp VÀ cùng version luật* — sửa luật xong QC tự chạy lại trong ≤ 5 phút. Mỗi luật một `SAVEPOINT` + timeout 120s: luật hỏng không kéo theo luật khác, nhưng lần nạp không được đánh dấu đã kiểm |
+| Cổng phát hành | Thêm lý do khoá thứ ba: QC đã kiểm lần nạp này nhưng dưới bộ luật cũ. `/api/gate`, `/api/summary`, `/api/exceptions` trả `qc_stale_reason` là `"run"` hoặc `"rules"` |
+| Giao diện | Hộp Bộ luật QC: Thêm / Sửa / Xoá / Chạy QC ngay / Tải YAML, form có "Thử SQL". Trang Phiên bản: "luật vN" mở snapshot chỉ đọc |
+| Hạ tầng | Image jobs bỏ `COPY rules`; QC job bỏ `RULES_PATH`; API service thêm `QC_JOB_NAME` và quyền `run.jobsExecutorWithOverrides` trên `dataops-qc` |
+
+Deploy lần đầu: `alembic upgrade head` (job `dataops-migrate`) **trước** khi
+deploy image jobs mới — QC Runner mới báo lỗi rõ và thoát nếu chưa có bảng
+`qc_rule`, không chạy với bộ luật rỗng.
 
 ## Terraform
 

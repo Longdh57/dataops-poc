@@ -124,8 +124,11 @@ def test_sale_chi_thay_job_cua_chinh_minh(client):
 
 def test_tai_file_khi_cong_khoa_bi_chan(client):
     gate = client.get("/api/gate", headers=as_user(ADMIN)).json()
-    if not gate["locked"]:
-        pytest.skip("cong dang mo")
+    # Chi ticket chan moi chan TAI file. Cong con khoa vi QC chua kiem
+    # (run moi, hoac bo luat vua sua o P10) — luc do van tai duoc file cua
+    # ban DA KY, vi ban ky da dong bang.
+    if not gate["blocking_tickets"]:
+        pytest.skip("khong co ticket chan")
     with psycopg.connect(URL) as c, c.cursor() as cur:
         cur.execute("SELECT id FROM export_job ORDER BY id DESC LIMIT 1")
         row = cur.fetchone()

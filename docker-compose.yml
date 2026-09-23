@@ -31,7 +31,7 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
     volumes:
       - ./apps/api/app:/srv/app:ro
-      # Sua rules.yaml la man hinh "Bo luat" thay ngay, khong build lai
+      # Seed cho migration p10. Bo luat that nam trong bang qc_rule (P10)
       - ./rules:/srv/rules:ro
       - ${HOME}/.config/gcloud/application_default_credentials.json:/secrets/adc.json:ro
     ports:

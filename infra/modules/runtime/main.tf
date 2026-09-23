@@ -95,6 +95,12 @@ resource "google_cloud_run_v2_service" "api" {
         value = google_cloud_run_v2_job.export.name
       }
 
+      # P10: nut "Chay QC ngay" trong hop Bo luat
+      env {
+        name  = "QC_JOB_NAME"
+        value = google_cloud_run_v2_job.qc.name
+      }
+
       # Phai di cung iap_enabled: bat REQUIRE_IAP khi IAP chua bat thi
       # moi request deu 401 vi khong co assertion nao ca.
       env {
@@ -356,7 +362,8 @@ resource "google_cloud_run_v2_job_iam_member" "scheduler_invoker" {
   member   = "serviceAccount:${var.jobs_service_account}"
 }
 
-# QC Runner — ap bo luat trong rules/rules.yaml len fact_current.
+# QC Runner — ap bo luat len fact_current. Tu P10 bo luat doc tu Postgres
+# (bang qc_rule), khong con doc file rules/rules.yaml.
 resource "google_cloud_run_v2_job" "qc" {
   project             = var.project_id
   name                = "dataops-qc"
@@ -382,11 +389,6 @@ resource "google_cloud_run_v2_job" "qc" {
         image   = var.jobs_image
         command = ["python"]
         args    = ["qc/main.py"]
-
-        env {
-          name  = "RULES_PATH"
-          value = "/srv/rules/rules.yaml"
-        }
 
         # P7: sau moi lan quet, day anh chup qc_exception len BigQuery cho
         # bao cao/BI phia khach hang. Ung dung van doc/ghi qua Postgres —
@@ -553,6 +555,17 @@ resource "google_cloud_run_v2_job_iam_member" "api_invoke_sync" {
   location = var.region
   name     = google_cloud_run_v2_job.sync.name
   role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.api_service_account}"
+}
+
+# P10: API goi QC Runner kem FORCE_QC=1 (ep chay lai du run khong doi),
+# tuc la co overrides — cung ly do voi export job o tren, run.invoker
+# khong du.
+resource "google_cloud_run_v2_job_iam_member" "api_invoke_qc" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.qc.name
+  role     = "roles/run.jobsExecutorWithOverrides"
   member   = "serviceAccount:${var.api_service_account}"
 }
 

@@ -18,7 +18,7 @@ sua so. Khong co bang nao giu "so da sua tay" nua. Loi di ra ngoai bang
 from datetime import datetime
 
 from sqlalchemy import (
-    BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer,
+    BigInteger, Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer,
     JSON, String, Text, UniqueConstraint, func, text,
 )
 from sqlalchemy import desc as sa_text_desc
@@ -281,6 +281,68 @@ class SyncState(Base):
     qc_run_id: Mapped[str | None] = mapped_column(String(64))
     qc_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rules_version: Mapped[int | None] = mapped_column(Integer)
+
+
+class QcRule(Base):
+    """Mot luat QC. Tu P10 bo luat song o day, khong con trong file.
+
+    `id` la slug va BAT BIEN: rule_id duoc luu duoi dang CHUOI trong
+    qc_exception, ticket.from_rule_id va signed_version.violations — khong
+    co khoa ngoai nao de doi ten theo. Muon ten moi thi tao luat moi roi
+    xoa luat cu, co audit.
+
+    rules/rules.yaml chi con la SEED cho migration p10.
+    """
+    __tablename__ = "qc_rule"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    # ["CA", "TX"]; NULL = ap cho moi bang
+    scope: Mapped[list | None] = mapped_column(JSON)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    sql: Mapped[str] = mapped_column(Text, nullable=False)
+    # Tat tam: van nam trong catalog, QC bo qua. Khac voi xoa.
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Giu thu tu doc nhu trong YAML goc
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    created_by: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[str] = mapped_column(String(320), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint("severity IN ('critical', 'warning', 'info')", name="ck_qc_rule_severity"),
+    )
+
+
+class QcRuleset(Base):
+    """Mot dong duy nhat (id=1), nhu sync_state. Moi lan ghi luat thanh
+    cong, `version` tang 1 trong CUNG transaction — giu dung nghia so
+    nguyen tang dan cua `rules_version` dang ghi vao ban ky."""
+    __tablename__ = "qc_ruleset"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    updated_by: Mapped[str | None] = mapped_column(String(320))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+class QcRulesetSnapshot(Base):
+    """Toan bo bo luat tai MOI version.
+
+    Tra loi cau "ban ky #12 duoc duyet duoi bo luat nao". Truoc P10 cau
+    tra loi la git show <commit>:rules/rules.yaml; file khong con la su
+    that nua nen snapshot la bat buoc.
+    """
+    __tablename__ = "qc_ruleset_snapshot"
+
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rules: Mapped[list] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class AuditLog(Base):

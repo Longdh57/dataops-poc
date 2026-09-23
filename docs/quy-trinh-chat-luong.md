@@ -144,7 +144,7 @@ Tên luật thôi thì rỗng: hôm nay `duoi_nguong_kiem_duyet` là 3 ô, thán
 |---|---|
 | Số lượng vi phạm theo từng luật | phân biệt 3 ô với 3.000 ô |
 | Vân tay tập vi phạm (hash các khóa tự nhiên) | phát hiện nguồn bị sửa tại chỗ dưới cùng một `run_id` |
-| Version của `rules.yaml` | tái hiện được team lead đã duyệt dưới bộ luật nào |
+| Version của bộ luật | tái hiện được team lead đã duyệt dưới bộ luật nào — từ P10 mỗi version có snapshot trong `qc_ruleset_snapshot`, mở được từ trang Phiên bản |
 | Danh sách ticket chưa đóng | biết bản này nợ gì |
 
 Dòng thứ hai quan trọng hơn vẻ ngoài. `run_id` do team Data đặt, và họ sửa số
@@ -232,6 +232,8 @@ SQL người vận hành đang có sẵn. Không đáng.
 ## Còn lại
 
 - Bộ luật chưa tự lớn lên: mỗi ticket kiểu "QC không bắt được" **nên** đẻ ra một
-  luật mới trong `rules.yaml`, nhưng hiện chưa có gì nhắc việc đó.
+  luật mới, nhưng hiện chưa có gì nhắc việc đó. Từ P10 việc tạo luật không còn
+  cần deploy — team lead thêm ngay trong hộp Bộ luật QC — nhưng nút "tạo luật từ
+  ticket" vẫn chưa có (đã chốt không làm ở P10).
 - Ticket vẫn phải báo cho team Data bằng tay — hệ thống không gửi đi đâu, nó chỉ
   đảm bảo ticket không đóng được nếu nguồn chưa thật sự sửa.

@@ -27,6 +27,11 @@ export const post = <T,>(path: string, body: unknown) =>
 export const patch = <T,>(path: string, body: unknown) =>
   gw<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
+export const put = <T,>(path: string, body: unknown) =>
+  gw<T>(path, { method: "PUT", body: JSON.stringify(body) });
+
+export const del = <T,>(path: string) => gw<T>(path, { method: "DELETE" });
+
 /** Ghep query string, bo qua gia tri rong. */
 export function qs(params: Record<string, string | number | undefined | null>): string {
   const sp = new URLSearchParams();

@@ -10,10 +10,12 @@ class Settings(BaseSettings):
     bigquery_dataset: str = "dataops_src"
     staging_bucket: str = ""
     region: str = "asia-southeast1"
-    # Cloud Run Job ma nut "Nap lai tu nguon" kich hoat
+    # Cloud Run Job ma nut "Refresh table" kich hoat
     sync_job_name: str = "dataops-sync"
     # Cloud Run Job sinh file deliverable
     export_job_name: str = "dataops-export"
+    # Cloud Run Job QC Runner — nut "Chay QC ngay" trong hop Bo luat (P10)
+    qc_job_name: str = "dataops-qc"
 
     # Model Gemini goi qua Vertex AI cho AI Agent (P7). Dung ADC cua
     # service account dataops-api, khong can API key.

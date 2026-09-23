@@ -42,6 +42,12 @@ def test_trung_id_bi_bat():
     assert any("trung 'id'" in m for m in loi)
 
 
+def test_nhieu_lenh_trong_mot_luat_bi_bat():
+    assert any("MOT cau SELECT" in m for m in validate([luat(sql="SELECT 1; DROP TABLE ticket")]))
+    # dau ; o CUOI thi van hop le — job tu bo di
+    assert validate([luat(sql="SELECT 1;")]) == []
+
+
 def test_scope_rong_hoac_sai_kieu_bi_bat():
     assert any("scope" in m for m in validate([luat(scope=[])]))
     assert any("scope" in m for m in validate([luat(scope="CA")]))
@@ -87,3 +93,25 @@ def test_created_at_rong_thanh_none_khong_nem_loi():
     out = rows_for_bq(rows, synced_at="2026-09-22T03:00:00+00:00")
     assert out[0]["created_at"] is None
     assert out[0]["observed"] is None
+
+
+# ------------------------------------------------ bo luat trong DB (P10)
+
+should_skip = qc_main.should_skip
+rule_sql = qc_main.rule_sql
+
+
+def test_bo_qua_chi_khi_cung_run_va_cung_bo_luat():
+    """Truoc P10 chi so run. Gio sua luat trong ung dung ma run khong doi,
+    nen phai chay lai — neu khong bo luat moi khong bao gio duoc ap."""
+    assert should_skip("run-2", "run-2", 7, 7) is True
+    assert should_skip("run-2", "run-2", 6, 7) is False   # vua sua luat
+    assert should_skip("run-2", "run-1", 7, 7) is False   # lan nap moi
+    assert should_skip("run-2", "run-1", 6, 7) is False
+    assert should_skip("run-2", None, None, 7) is False   # chua kiem bao gio
+
+
+def test_dau_phan_tram_trong_luat_duoc_nhan_doi():
+    """Job truyen tham so vao cung cau lenh — `%` tran se lam hong ca job."""
+    assert rule_sql(luat(sql="SELECT 1 WHERE x LIKE 'A%';")) == "SELECT 1 WHERE x LIKE 'A%%'"
+

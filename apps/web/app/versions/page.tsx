@@ -16,6 +16,7 @@ import { gw, post } from "@/app/lib/api";
 import { useGate } from "@/app/lib/queries";
 import type { SignedVersion } from "@/app/lib/types";
 import { ErrBox, Loading, Modal } from "@/app/ui/bits";
+import { RulesModal } from "@/app/ui/rules-panel";
 
 type Res = { rows: SignedVersion[]; can_sign: boolean };
 
@@ -28,6 +29,9 @@ export default function VersionsPage() {
   const [label, setLabel] = useState("");
   const [note, setNote] = useState("");
   const [sending, setSending] = useState<SignedVersion | null>(null);
+  // P10: bo luat song trong DB va doi duoc — bam "luat vN" de xem dung bo
+  // luat ban ky nay duoc duyet duoi, tu snapshot.
+  const [rulesV, setRulesV] = useState<number | null>(null);
 
   const sign = useMutation({
     mutationFn: () =>
@@ -43,6 +47,7 @@ export default function VersionsPage() {
 
   const chan = gate?.blocking_tickets ?? [];
   const stale = gate?.qc_stale ?? false;
+  const staleRules = gate?.qc_stale_reason === "rules";
   const locked = chan.length > 0 || stale;
   const canNo = gate?.needs_approval ?? false;
   const duNote = !canNo || note.trim().length >= 10;
@@ -62,7 +67,9 @@ export default function VersionsPage() {
             <h2>{t("ver.signNew")}</h2>
             {locked ? (
               <span className="pill pill-crit">
-                {stale ? t("ver.pill.stale") : t("ver.pill.blocking", { n: chan.length })}
+                {stale
+                  ? staleRules ? t("qc.staleRules.pill") : t("ver.pill.stale")
+                  : t("ver.pill.blocking", { n: chan.length })}
               </span>
             ) : canNo ? (
               <span className="pill pill-warn">{t("ver.pill.debt")}</span>
@@ -77,10 +84,16 @@ export default function VersionsPage() {
           {locked ? (
             <div className="banner banner-crit" style={{ marginBottom: 12, display: "block" }}>
               <div className="banner-title">
-                {stale ? t("ver.blockedStaleTitle") : t("ver.blockedTicketTitle")}
+                {stale
+                  ? staleRules ? t("qc.staleRules.title") : t("ver.blockedStaleTitle")
+                  : t("ver.blockedTicketTitle")}
               </div>
               <div className="banner-body">
-                {stale ? (
+                {stale && staleRules ? (
+                  t("qc.staleRules.body", {
+                    current: gate?.ruleset_version ?? "—", applied: gate?.rules_version ?? "—",
+                  })
+                ) : stale ? (
                   tn("ver.blockedStaleBody", {
                     runId: <span className="mono">{gate?.run_id}</span>,
                     qcRunId: <span className="mono">{gate?.qc_run_id ?? "—"}</span>,
@@ -187,7 +200,14 @@ export default function VersionsPage() {
                       {v.source_run_ids?.length
                         ? t("ver.sourceRuns", { n: v.source_run_ids.length })
                         : t("ver.noSourceRuns")}
-                      {v.rules_version ? t("ver.rulesVersion", { v: v.rules_version }) : ""}
+                      {v.rules_version ? (
+                        <button
+                          type="button" className="linklike"
+                          onClick={() => setRulesV(v.rules_version ?? null)}
+                        >
+                          {t("ver.rulesVersion", { v: v.rules_version })}
+                        </button>
+                      ) : ""}
                     </div>
                   </td>
                   <td className="num">{num(v.row_count)}</td>
@@ -225,6 +245,7 @@ export default function VersionsPage() {
       </div>
 
       {sending ? <SendModal version={sending} onClose={() => setSending(null)} /> : null}
+      {rulesV !== null ? <RulesModal version={rulesV} onClose={() => setRulesV(null)} /> : null}
     </>
   );
 }

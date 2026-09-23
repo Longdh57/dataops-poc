@@ -32,6 +32,7 @@ export default function DashboardPage() {
   const warn = s.exceptions.by_severity.warning ?? 0;
   const locked = s.gate.locked;
   const stale = s.gate.qc_stale;
+  const staleRules = s.gate.qc_stale_reason === "rules";
   // Ba trang thai chu khong phai hai. "Con no" khong phai la khoa: team
   // lead ky duoc, mien la ky kem phieu duyet co ten.
   const tone = locked ? "crit" : s.gate.needs_approval ? "warn" : "good";
@@ -43,7 +44,7 @@ export default function DashboardPage() {
           <div className="banner-title" style={{ color: `var(--${tone === "warn" ? "warn" : tone})` }}>
             {locked
               ? stale
-                ? t("dash.gate.stale")
+                ? staleRules ? t("qc.staleRules.title") : t("dash.gate.stale")
                 : t("dash.gate.locked")
               : s.gate.needs_approval
                 ? t("dash.gate.debt")
@@ -52,7 +53,11 @@ export default function DashboardPage() {
           <div className="banner-body">
             {locked
               ? stale
-                ? t("dash.gateBody.stale")
+                ? staleRules
+                  ? t("qc.staleRules.body", {
+                      current: s.gate.ruleset_version ?? "—", applied: s.gate.rules_version ?? "—",
+                    })
+                  : t("dash.gateBody.stale")
                 : t("dash.gateBody.locked", { n: s.gate.blocking })
               : s.gate.needs_approval
                 ? t("dash.gateBody.debt", {
@@ -92,7 +97,7 @@ export default function DashboardPage() {
             <div>
               <h2>{t("dash.byRule.title")}</h2>
               <p className="sub">
-                {tn("dash.byRule.sub", { file: <span className="mono">rules/rules.yaml</span> })}
+                {tn("dash.byRule.sub", { file: <span className="mono">qc_rule</span> })}
               </p>
             </div>
             {/* Bieu do chi cho thay rule_id va so luong. Nut nay tra loi

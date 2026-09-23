@@ -28,7 +28,9 @@ type ListRes = {
   rows: QcException[];
   run_id: string | null;
   qc_stale?: boolean;
+  qc_stale_reason?: "run" | "rules" | null;
   rules_version?: number | null;
+  ruleset_version?: number | null;
 };
 
 export default function ExceptionsPage() {
@@ -96,7 +98,19 @@ export default function ExceptionsPage() {
         </div>
       </div>
 
-      {list.data?.qc_stale ? (
+      {list.data?.qc_stale && list.data.qc_stale_reason === "rules" ? (
+        <div className="banner banner-warn" style={{ marginBottom: 14 }}>
+          <div>
+            <div className="banner-title">{t("qc.staleRules.title")}</div>
+            <div className="banner-body">
+              {t("qc.staleRules.body", {
+                current: list.data.ruleset_version ?? "—",
+                applied: list.data.rules_version ?? "—",
+              })}
+            </div>
+          </div>
+        </div>
+      ) : list.data?.qc_stale ? (
         <div className="banner banner-warn" style={{ marginBottom: 14 }}>
           <div>
             <div className="banner-title">{t("exc.staleTitle")}</div>

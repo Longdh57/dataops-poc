@@ -14,6 +14,8 @@ Bảng tra nhanh:
 | Cảnh báo "Sync Job im lặng quá 30 phút" | [Khi đồng bộ hỏng](#khi-đồng-bộ-hỏng) |
 | Sale báo file tải về sai | [Khi file xuất sai](#khi-file-xuất-sai) |
 | Cần quay lại số liệu của bản trước | [Quay lại phiên bản trước](#quay-lại-phiên-bản-trước) |
+| Cần đổi ngưỡng, thêm hoặc tắt một luật QC | [Sửa luật QC](#sửa-luật-qc) |
+| QC Runner báo "luật HONG" | [Sửa luật QC](#sửa-luật-qc) |
 | Có người mới vào đội | [Thêm người dùng](#thêm-người-dùng) |
 | Dựng lại hệ thống ở project khác | [Dựng lại từ đầu](#dựng-lại-từ-đầu) |
 
@@ -77,6 +79,7 @@ Từ P6, vi phạm luật **không còn khoá cổng**. Chỉ hai thứ khoá đ
 |---|---|---|
 | Ticket đang chặn | Trang *Ticket*, banner đỏ | Sửa ở nguồn rồi chờ QC xác minh; hoặc team lead gỡ chặn từng cái (có ghi lý do) |
 | QC chưa kiểm lần nạp hiện tại | Trang *Phiên bản*, banner đỏ | Chờ — QC chạy mỗi 5 phút. Ép ngay: `gcloud run jobs execute dataops-qc --region=asia-southeast1` |
+| QC chưa chạy dưới bộ luật hiện tại (P10) | Dashboard / *Phiên bản*: "QC chưa chạy dưới bộ luật hiện tại" | Ai đó vừa sửa luật. Chờ tối đa 5 phút, hoặc bấm **Chạy QC ngay** trong hộp Bộ luật QC. Nếu vẫn khoá: có luật hỏng — xem [Sửa luật QC](#sửa-luật-qc) |
 
 Còn vi phạm luật mà vẫn ký được — đó là thiết kế. Team lead viết phiếu duyệt,
 và câu đó đi theo bản ký vĩnh viễn, in cả vào file gửi khách.
@@ -258,6 +261,57 @@ gcloud projects remove-iam-policy-binding dataops-poc-2026 \
 
 Xác nhận: deploy lại `dataops-api` và gọi `/health` — `database.connected`
 phải là `true`.
+
+---
+
+## Sửa luật QC
+
+Từ P10 bộ luật nằm trong Postgres (bảng `qc_rule`) và sửa ngay trong ứng dụng.
+`rules/rules.yaml` chỉ còn là **seed** cho migration — sửa file đó không đổi
+gì trên hệ thống đang chạy.
+
+**Ai sửa được:** team_lead và admin. Người khác mở hộp luật chỉ đọc được.
+
+**Sửa ở đâu:** nút **Xem bộ luật** trên Dashboard hoặc trang Vi phạm →
+**Thêm luật** / **Sửa** / **Xoá** trên từng luật. Muốn ngừng tạm một luật thì
+bỏ tick *Đang bật* thay vì xoá — SQL được giữ lại.
+
+**Bao lâu có hiệu lực:** mỗi lần lưu, bộ luật lên một version. QC Runner thấy
+version đổi ở chu kỳ kế tiếp (tối đa 5 phút) và tự chạy lại, kể cả khi lần nạp
+không đổi. Bấm **Chạy QC ngay** trong banner vàng để khỏi chờ. Trong khoảng đó
+cổng phát hành khoá với lý do "QC chưa chạy dưới bộ luật hiện tại" — đúng như
+thiết kế, để không ai ký dưới danh sách vi phạm của bộ luật cũ.
+
+**Trước khi lưu:** bấm **Thử SQL**. Server chạy câu SQL trong transaction chỉ
+đọc, timeout 10 giây, và báo cột thiếu, số dòng bắt được, 20 dòng mẫu. Lúc lưu
+server chạy thử lại một lần nữa — luật hỏng không lưu được.
+
+**Khi QC Runner báo luật hỏng** (log `luat HONG`, job exit 1): thường là do
+schema `fact_current` đổi sau khi luật được lưu. Các luật khác vẫn chạy, nhưng
+lần nạp **không** được đánh dấu đã kiểm, nên cổng vẫn khoá. Mở hộp luật, sửa
+hoặc tắt luật đó — version tăng, QC chạy lại.
+
+```bash
+gcloud logging read 'resource.labels.job_name="dataops-qc" AND textPayload:"HONG"' \
+  --limit=20 --format='value(textPayload)'
+```
+
+**Xem bộ luật một bản ký đã dùng:** trang Phiên bản, bấm "luật vN" ở cột lần
+nạp. Hộp mở ra đúng bộ luật tại version đó, chỉ đọc — kể cả luật đã bị xoá sau này.
+
+**Quay lại một version cũ:** chưa có nút. Mở snapshot version cũ, tab YAML,
+rồi sửa lại từng luật cho khớp. Mỗi thao tác là một version mới, có audit.
+
+**Ai sửa gì:**
+
+```sql
+SELECT created_at, actor, action, entity_key, before, after
+FROM audit_log WHERE entity = 'qc_rule' ORDER BY id DESC LIMIT 20;
+```
+
+**Cập nhật file seed** khi muốn môi trường dựng mới có bộ luật hiện tại: tab
+YAML → **Tải YAML** → thay `rules/rules.yaml` → commit. Chỉ migration p10 đọc
+file này, và chỉ khi bảng `qc_rule` còn rỗng.
 
 ---
 

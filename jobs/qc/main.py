@@ -1,8 +1,9 @@
 """QC Runner — hai viec, chay sau moi lan nap.
 
-1. Ap bo luat trong rules/rules.yaml len fact_current. Luat nam trong file
-   cau hinh chu khong trong code: them luat moi chi can them mot muc vao
-   YAML roi chay lai job nay.
+1. Ap bo luat len fact_current. Tu P10 bo luat nam trong Postgres (bang
+   qc_rule, version o qc_ruleset) va duoc sua ngay trong ung dung — job
+   nay khong doc rules/rules.yaml nua, file do chi con la seed cho
+   migration. Luat dang TAT (enabled = false) bi bo qua.
 
 2. Doi chieu tung ticket dang song voi so THAT trong lan nap vua ve. Day
    la cho duy nhat ticket duoc dong. Nguoi khong dong duoc ticket — ke ca
@@ -19,15 +20,14 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 import psycopg
-import yaml
 from google.cloud import bigquery
 from psycopg.rows import dict_row
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost:5432/dataops")
-RULES_PATH = Path(os.getenv("RULES_PATH", "/srv/rules/rules.yaml"))
+# Mot luat nang (hoac pg_sleep) khong duoc an het 900s timeout cua job.
+RULE_TIMEOUT_MS = int(os.getenv("QC_RULE_TIMEOUT_MS", "120000"))
 
 # Day anh chup qc_exception len BigQuery cho bao cao/BI phia khach hang.
 # Ung dung VAN doc tu Postgres (khong doi duong doc, tiet kiem chi phi
@@ -141,10 +141,48 @@ def validate(rules: list[dict]) -> list[str]:
             loi.append(f"{ten}: thieu 'message' — day la cau nguoi dung doc")
         if not r.get("sql"):
             loi.append(f"{ten}: thieu 'sql'")
+        elif ";" in r["sql"].strip().rstrip(";"):
+            # Cung luat voi API (app/rules.py): mot luat la MOT cau SELECT.
+            loi.append(f"{ten}: 'sql' chi duoc la MOT cau SELECT — khong dung dau ';'")
         scope = r.get("scope")
         if scope is not None and (not isinstance(scope, list) or not scope):
             loi.append(f"{ten}: 'scope' phai la danh sach bang, hoac bo han di")
     return loi
+
+
+def load_rules(conn: psycopg.Connection) -> tuple[list[dict], int | None]:
+    """Bo luat dang BAT + version bo luat, doc tu Postgres.
+
+    Thu tu doc nhu tren giao dien (sort_order). Luat tat van nam trong
+    catalog — nguoi ta tat de thu nguong ma khong mat SQL — nhung khong
+    chay, nen cung khong sinh vi pham.
+    """
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute("SELECT version FROM qc_ruleset WHERE id = 1")
+        row = cur.fetchone()
+        version = row["version"] if row else None
+        cur.execute("""SELECT id, severity, scope, message, sql FROM qc_rule
+                       WHERE enabled ORDER BY sort_order, id""")
+        rules = cur.fetchall()
+    return rules, version
+
+
+def should_skip(last_run_id: str, checked_run_id: str | None,
+                applied_version: int | None, current_version: int | None) -> bool:
+    """Bo qua khi lan nap nay DA duoc kiem DUOI dung bo luat nay.
+
+    Truoc P10 chi so run_id. Gio bo luat doi duoc trong ung dung ma run
+    khong doi, nen phai so ca version: sua luat xong, Scheduler goi job o
+    chu ky ke tiep (5 phut) la bo luat moi duoc ap — nguoi sua khong can
+    nho bam gi.
+    """
+    return checked_run_id == last_run_id and applied_version == current_version
+
+
+def rule_sql(rule: dict) -> str:
+    """SQL cua luat, `%` nhan doi vi job truyen tham so vao cung cau lenh.
+    Phai giong het app/rules.py:escape_percent() ben API (chay thu)."""
+    return rule["sql"].strip().rstrip(";").replace("%", "%%")
 
 
 def scope_filter(rule: dict) -> tuple[str, list]:
@@ -235,41 +273,40 @@ def mirror_qc_exception_to_bigquery(conn: psycopg.Connection) -> None:
 
 
 def main() -> int:
-    if not RULES_PATH.exists():
-        log(f"khong thay file luat: {RULES_PATH}")
-        return 1
-
-    config = yaml.safe_load(RULES_PATH.read_text())
-    rules = config["rules"]
-    # Ghi lai de ban ky cheo duoc: "team lead duyet duoi bo luat version
-    # may". Thieu no thi mot quyet dinh cu khong tai hien duoc, vi file
-    # luat la thu bi sua thuong xuyen nhat trong ca he thong.
-    rules_version = config.get("version")
-
-    if loi := validate(rules):
-        log(f"file luat co {len(loi)} loi — KHONG chay luat nao:")
-        for m in loi:
-            log(f"  - {m}")
-        return 1
-    log(f"nap {len(rules)} luat (version {rules_version}) tu {RULES_PATH}")
-
     with psycopg.connect(DATABASE_URL) as conn:
+        try:
+            rules, rules_version = load_rules(conn)
+        except psycopg.errors.UndefinedTable:
+            log("chua co bang qc_rule — chay migration p10 (alembic upgrade head) truoc")
+            return 1
+        if rules_version is None:
+            log("qc_ruleset rong — migration p10 chua seed bo luat")
+            return 1
+        # Phong thu lop hai: API da kiem truoc khi luu, nhung DB co the bi
+        # sua tay. Luat sai cau truc thi KHONG chay luat nao.
+        if loi := validate(rules):
+            log(f"bo luat version {rules_version} co {len(loi)} loi — KHONG chay luat nao:")
+            for m in loi:
+                log(f"  - {m}")
+            return 1
+
         with conn.cursor() as cur:
-            cur.execute("SELECT last_run_id, qc_run_id FROM sync_state WHERE id = 1")
+            cur.execute("SELECT last_run_id, qc_run_id, rules_version FROM sync_state WHERE id = 1")
             row = cur.fetchone()
             if not row or not row[0]:
                 log("chua co lan dong bo nao — khong co gi de kiem")
                 return 0
-            run_id, da_kiem = row
-        # Bo qua neu run nay da duoc kiem roi — cung tinh than voi Sync Job:
-        # khong lam viec thua. Dat FORCE_QC=1 de ep chay lai.
-        if os.getenv("FORCE_QC") != "1" and da_kiem == run_id:
-            log(f"run {run_id} da duoc kiem — bo qua")
+            run_id, da_kiem, da_ap = row
+        # Bo qua neu run nay da duoc kiem duoi dung bo luat nay — khong lam
+        # viec thua. Dat FORCE_QC=1 de ep chay lai.
+        if os.getenv("FORCE_QC") != "1" and should_skip(run_id, da_kiem, da_ap, rules_version):
+            log(f"run {run_id} da duoc kiem duoi bo luat version {rules_version} — bo qua")
             return 0
 
-        log(f"kiem tren run {run_id}")
+        log(f"kiem tren run {run_id} voi {len(rules)} luat dang bat (version {rules_version})")
 
         totals: dict[str, int] = {}
+        hong: dict[str, str] = {}
         with conn.cursor() as cur:
             # Thay the TOAN BO vi pham cua lan nap nay. Vi pham khong co
             # trang thai nen khong co gi de giu lai: danh sach phai la anh
@@ -278,21 +315,34 @@ def main() -> int:
             if cur.rowcount:
                 log(f"thay the {cur.rowcount:,} vi pham cu cua chinh lan nap nay")
 
+            cur.execute(f"SET LOCAL statement_timeout = {RULE_TIMEOUT_MS}")
             for rule in rules:
                 where, scope_params = scope_filter(rule)
-                cur.execute(
-                    f"""
-                    INSERT INTO qc_exception
-                        (run_id, rule_id, severity, year, state, institution_id, institution, message, observed)
-                    SELECT %s, %s, %s, x.year, x.state, x.institution_id, x.institution, %s, x.observed
-                    FROM ({rule['sql']}) x
-                    {where}
-                    """,
-                    (run_id, rule["id"], rule["severity"], rule["message"], *scope_params),
-                )
-                totals[rule["id"]] = cur.rowcount
+                # SAVEPOINT tung luat: mot luat hong (SQL loi, qua timeout)
+                # khong keo theo ket qua cua cac luat khac.
+                cur.execute("SAVEPOINT luat")
+                try:
+                    cur.execute(
+                        f"""
+                        INSERT INTO qc_exception
+                            (run_id, rule_id, severity, year, state, institution_id, institution, message, observed)
+                        SELECT %s, %s, %s, x.year, x.state, x.institution_id, x.institution, %s, x.observed
+                        FROM ({rule_sql(rule)}) x
+                        {where}
+                        """,
+                        (run_id, rule["id"], rule["severity"], rule["message"], *scope_params),
+                    )
+                    # Lay NGAY: RELEASE SAVEPOINT ben duoi ghi de rowcount.
+                    n = cur.rowcount
+                except psycopg.Error as exc:
+                    cur.execute("ROLLBACK TO SAVEPOINT luat")
+                    hong[rule["id"]] = str(exc).strip().splitlines()[0]
+                    log(f"  {rule['id']:26} HONG: {hong[rule['id']]}")
+                    continue
+                cur.execute("RELEASE SAVEPOINT luat")
+                totals[rule["id"]] = n
                 pham_vi = f" [{','.join(rule['scope'])}]" if rule.get("scope") else ""
-                log(f"  {rule['id']:26} {rule['severity']:9} {cur.rowcount:>6,}{pham_vi}")
+                log(f"  {rule['id']:26} {rule['severity']:9} {n:>6,}{pham_vi}")
         conn.commit()
 
         # Ticket sau luat: ca hai deu doc fact_current cua cung lan nap,
@@ -301,11 +351,16 @@ def main() -> int:
         tk = verify_tickets(conn, run_id)
         log(f"  dong {tk['dong']} · bat lai {tk['bat_lai']} · con mo {tk['con_mo']}")
 
-        with conn.cursor() as cur:
-            cur.execute("""UPDATE sync_state
-                           SET qc_run_id=%s, qc_checked_at=now(), rules_version=%s
-                           WHERE id=1""", (run_id, rules_version))
-        conn.commit()
+        # Co luat hong thi KHONG danh dau "da kiem": danh sach vi pham dang
+        # thieu luat do, ky luc nay la ky mot thu chua kiem du. Cong van
+        # khoa ("QC chua kiem") cho toi khi ai do sua hoac tat luat hong —
+        # viec do tang version, va job chay lai o chu ky ke tiep.
+        if not hong:
+            with conn.cursor() as cur:
+                cur.execute("""UPDATE sync_state
+                               SET qc_run_id=%s, qc_checked_at=now(), rules_version=%s
+                               WHERE id=1""", (run_id, rules_version))
+            conn.commit()
 
         mirror_qc_exception_to_bigquery(conn)
 
@@ -318,6 +373,10 @@ def main() -> int:
             chan = cur.fetchone()[0]
 
     log(f"vi pham lan nap nay: {summary}")
+    if hong:
+        log(f"{len(hong)} luat HONG — lan nap nay CHUA duoc danh dau da kiem: {sorted(hong)}")
+        log("  sua hoac tat luat trong hop 'Bo luat QC', QC se tu chay lai")
+        return 1
     # Vi pham luat KHONG khoa cong nua — chung la nghi ngo cua may, va
     # team lead duyet bang phieu duyet co ten. Chi ticket chan moi khoa.
     log(f"cong phat hanh: {'KHOA' if chan else 'SAN SANG'} ({chan} ticket dang chan)")

@@ -60,6 +60,8 @@ export type Gate = {
   needs_approval: boolean;
   /** QC chua kiem lan nap hien tai -> danh sach vi pham la cua lan truoc. */
   qc_stale: boolean;
+  qc_stale_reason?: "run" | "rules" | null;
+  ruleset_version?: number | null;
   run_id: string | null;
   qc_run_id: string | null;
   rules_version: number | null;
@@ -116,7 +118,8 @@ export type FactsPage = {
   scope: string[] | "tat ca";
 };
 
-/** Mot luat trong rules/rules.yaml, doc len de xem — khong sua duoc tu web. */
+/** Mot luat QC. Tu P10 song trong bang qc_rule, sua duoc tu web
+ *  (team_lead / admin). `id` bat bien sau khi tao. */
 export type QcRule = {
   id: string;
   severity: "critical" | "warning" | "info" | string;
@@ -124,20 +127,58 @@ export type QcRule = {
   scope: string[] | null;
   message: string;
   sql: string;
+  /** false = van trong catalog nhung QC bo qua. */
+  enabled: boolean;
+  sort_order?: number;
+  updated_by?: string;
+  updated_at?: string;
 };
 
-/** Ca bo luat + noi dung tho cua chinh file. */
+/** Ca bo luat + ban YAML render tu chinh bo luat do. */
 export type RulesCatalog = {
-  /** Version ghi trong FILE — thu se chay o lan QC ke tiep. */
+  /** Version cua BO LUAT DANG HIEN — hien tai, hoac snapshot cu. */
   version: number | null;
   rules: QcRule[];
   raw: string;
   source: string;
+  /** true = dang xem snapshot mot version cu, chi doc. */
+  snapshot: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
+  /** Version bo luat hien tai — thu se chay o lan QC ke tiep. */
+  current_version: number | null;
   /** Version bo luat ma QC da chay THAT tren lan nap hien tai. */
   applied_version: number | null;
   qc_run_id: string | null;
-  /** false = file da doi nhung QC chua chay lai duoi bo luat moi. */
+  /** false = bo luat da doi nhung QC chua chay lai duoi bo luat moi. */
   in_sync: boolean;
+  /** team_lead / admin, va khong phai snapshot. */
+  can_edit: boolean;
+};
+
+/** Ket qua chay thu SQL cua mot luat — POST /rules/preview. */
+export type RulePreview = {
+  ok: boolean;
+  columns: string[];
+  missing_columns: string[];
+  count: number | null;
+  rows: Array<{
+    year: number | null;
+    state: string | null;
+    institution_id: number | null;
+    institution: string | null;
+    observed: unknown;
+  }>;
+  ms: number | null;
+  error: string | null;
+};
+
+/** 409 khi hai nguoi sua bo luat cung luc. */
+export type RulesConflict = {
+  message: string;
+  current_version: number;
+  updated_by: string | null;
+  updated_at: string | null;
 };
 
 /** Mot vi pham luat, thuoc ve dung mot lan nap. Khong co trang thai. */
@@ -193,7 +234,13 @@ export type Summary = {
     run_id: string | null;
   };
   tickets: { open: number; awaiting_verify: number; blocking: number };
-  gate: { locked: boolean; blocking: number; qc_stale: boolean; needs_approval: boolean };
+  gate: {
+    locked: boolean; blocking: number; qc_stale: boolean; needs_approval: boolean;
+    /** "run" = QC chua kiem lan nap moi; "rules" = bo luat vua doi (P10). */
+    qc_stale_reason?: "run" | "rules" | null;
+    rules_version?: number | null;
+    ruleset_version?: number | null;
+  };
   last_signed: SignedVersion | null;
   delta: {
     run_changed: boolean;
