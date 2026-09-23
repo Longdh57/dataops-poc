@@ -30,6 +30,12 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost
 OWNER = os.getenv("OWNER_EMAIL", "longbloginfo@gmail.com")
 
 SEED_BIGQUERY = os.getenv("SEED_BIGQUERY") == "1"
+# Du lieu FDIC that gan nhu khong bao gio tu vi pham 2 luat "toan ven cong
+# thuc" (deposit_share duoc tinh dung tu dau) hay luat "tai xuat sau khoang
+# trong" (5 nam seed qua ngan de co gap that > 3 nam). Bat co nay de pha vai
+# dong that thanh du lieu gia, dam bao demo QC luon co du vi du cho ca 6
+# luat trong rules.yaml — khong dung cho pipeline that.
+SEED_FAKE_VIOLATIONS = os.getenv("SEED_FAKE_VIOLATIONS") == "1"
 PROJECT = os.getenv("GCP_PROJECT_ID", "dataops-poc-2026")
 DATASET = os.getenv("BQ_DATASET", "dataops_src")
 TABLE = os.getenv("BQ_TABLE", "fact_names")
@@ -42,6 +48,47 @@ SEED_YEAR_COUNT = int(os.getenv("SEED_YEAR_COUNT", "5"))
 FDIC_API = "https://api.fdic.gov/banks/sod"
 FDIC_FIELDS = "YEAR,STALPBR,CERT,NAMEFULL,DEPSUMBR"
 FDIC_PAGE_LIMIT = 10000
+
+# Chon 3 dong dau tien (theo institution_id) cua 3 nhom (year, state) khac
+# nhau co tu 2 to chuc tro len, roi cong lech deposit_share cua dung dong
+# do +0.05 — dong bi sua vua sai cong thuc rieng no (deposit_share_formula_
+# mismatch), vua keo tong ca nhom lech khoi 1.0 (deposit_share_sum_not_100),
+# nen 3 dong nay phu du 2 luat cung luc.
+FAKE_SHARE_MISMATCH_SQL = """
+UPDATE `{project}.{dataset}.{table}` t
+SET deposit_share = t.deposit_share + 0.05
+FROM (
+  SELECT year, state, institution_id
+  FROM (
+    SELECT year, state, institution_id,
+           ROW_NUMBER() OVER (PARTITION BY year, state ORDER BY institution_id) AS rn,
+           COUNT(*) OVER (PARTITION BY year, state) AS grp_size
+    FROM `{project}.{dataset}.{table}`
+  )
+  WHERE rn = 1 AND grp_size > 1
+  ORDER BY year, state
+  LIMIT 3
+) bad
+WHERE t.year = bad.year AND t.state = bad.state AND t.institution_id = bad.institution_id
+"""
+
+# Chon dong co nam moi nhat (deterministic, co prev_year that), ghi de
+# prev_year/prev_deposit — hai cot nay la du lieu da tinh san (LAG) ma luat
+# doc thang, nen sua truc tiep la du de gia lap "bien mat > 3 nam roi tai
+# xuat voi deposit >= 100M" ma khong can dung that mot chuoi nam dai hon
+# SEED_YEAR_COUNT.
+FAKE_GAP_REAPPEAR_SQL = """
+UPDATE `{project}.{dataset}.{table}` t
+SET prev_year = t.year - 4, prev_deposit = 150000
+FROM (
+  SELECT year, state, institution_id
+  FROM `{project}.{dataset}.{table}`
+  WHERE prev_year IS NOT NULL
+  ORDER BY year DESC, state, institution_id
+  LIMIT 1
+) bad
+WHERE t.year = bad.year AND t.state = bad.state AND t.institution_id = bad.institution_id
+"""
 
 USERS = [
     (OWNER,                      "Chu he thong",      "admin",     None),
@@ -165,6 +212,27 @@ def seed_bigquery() -> None:
     job.result()
     print(f"[seed] bang {PROJECT}.{DATASET}.{TABLE} san sang · run_id={run_id} "
           f"· nam {years[0]}-{years[-1]} · quet {(job.total_bytes_processed or 0) / 1e6:.0f} MB", flush=True)
+
+    if SEED_FAKE_VIOLATIONS:
+        _inject_demo_violations(bq)
+
+
+def _inject_demo_violations(bq) -> None:
+    """Pha vai dong that thanh du lieu gia de dam bao QC co it nhat 1 vi
+    pham cho 3 luat ma du lieu FDIC that gan nhu khong bao gio tu vi pham:
+    deposit_share_sum_not_100, deposit_share_formula_mismatch (cong thuc
+    duoc tinh dung tu dau) va institution_reappeared_after_gap (5 nam seed
+    qua ngan de co khoang trong that > 3 nam). 3 luat con lai
+    (deposit_negative_or_zero, deposit_spike, unusual_deposit_change) da
+    tu nhien co hang tram vi pham tren du lieu that nen khong can gia.
+    """
+    for label, sql in [
+        ("deposit_share_formula_mismatch + deposit_share_sum_not_100", FAKE_SHARE_MISMATCH_SQL),
+        ("institution_reappeared_after_gap", FAKE_GAP_REAPPEAR_SQL),
+    ]:
+        job = bq.query(sql.format(project=PROJECT, dataset=DATASET, table=TABLE), location=LOCATION)
+        job.result()
+        print(f"[seed] fake violation cho {label}: {job.num_dml_affected_rows} dong", flush=True)
 
 
 def main() -> int:
