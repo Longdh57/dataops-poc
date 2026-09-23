@@ -50,6 +50,16 @@ echo "--- dataset BigQuery ${ANALYTICS}"
 terraform import "module.data.google_bigquery_dataset.analytics" \
   "projects/${PROJECT}/datasets/${ANALYTICS}" 2>&1 | tail -2
 
+# Dataset snapshot ban ky (P11) — tao tay bang `bq mk` luc deploy P11 vi
+# CI khong chay terraform. Tao lai la loi 409 nhu hai dataset tren.
+# Quyen ghi cua API duoc cap bang ACL cua dataset (WRITER), khong phai
+# IAM member: google_bigquery_dataset_iam_member chi la them mot member
+# da co, apply khong loi.
+echo
+echo "--- dataset BigQuery dataops_signed"
+terraform import "module.data.google_bigquery_dataset.signed" \
+  "projects/${PROJECT}/datasets/dataops_signed" 2>&1 | tail -2
+
 # --- Export Job va cac binding di kem, tao tay bang gcloud khi P5 chua apply ---
 #
 # Job BAT BUOC phai import: tao lai mot job da ton tai la loi 409, apply
