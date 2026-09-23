@@ -55,7 +55,6 @@ export const en: Record<MessageKey, string> = {
   "identity.user.lead": "Team Lead — signs releases",
   "identity.user.analystTx": "Analyst — Texas only",
   "identity.user.analystCa": "Analyst — California only",
-  "identity.user.sale": "Sales — CA + TX",
 
   // ------------------------------------------------------------- freshness
   "strip.run": "Load",

@@ -1,6 +1,6 @@
 "use client";
 
-// Trang cho sale: xin file, theo doi trang thai, tai ve khi xong.
+// Trang xuat file: xin file, theo doi trang thai, tai ve khi xong.
 //
 // Export chay bat dong bo — POST tra 202 kem job_id chu khong giu ket noi
 // cho file sinh xong. Trang nay poll 5 giay mot lan khi con job dang chay.

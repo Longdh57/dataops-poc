@@ -19,7 +19,6 @@ export const DEV_USERS: { email: string; label: MessageKey }[] = [
   { email: "lead@dataops.test", label: "identity.user.lead" },
   { email: "analyst.tx@dataops.test", label: "identity.user.analystTx" },
   { email: "analyst.ca@dataops.test", label: "identity.user.analystCa" },
-  { email: "sale@dataops.test", label: "identity.user.sale" },
 ];
 
 function setCookie(email: string) {

@@ -60,7 +60,6 @@ export const vi = {
   "identity.user.lead": "Team Lead — ký phát hành",
   "identity.user.analystTx": "Analyst — chỉ Texas",
   "identity.user.analystCa": "Analyst — chỉ California",
-  "identity.user.sale": "Sale — CA + TX",
 
   // ---------------------------------------------------------- do tuoi du lieu
   "strip.run": "Lần nạp",
