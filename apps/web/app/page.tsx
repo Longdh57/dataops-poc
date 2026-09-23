@@ -80,14 +80,14 @@ export default function DashboardPage() {
               note={`${s.facts.year_min ?? "—"}–${s.facts.year_max ?? "—"}`} />
         <Stat label={t("dash.stat.critical")} value={num(crit)} tone={crit ? "warn" : "good"}
               note={t("dash.stat.criticalNote")} />
-        <Stat label={t("dash.stat.warning")} value={num(warn)} tone={warn ? "warn" : undefined}
-              note={t("dash.stat.warningNote")} />
+        <Stat label={t("dash.stat.warning")} value={num(warn)} tone={warn ? "warn" : undefined} />
         <Stat label={t("dash.stat.flagged")} value={num(s.exceptions.flagged_rows)}
               note={t("dash.stat.flaggedNote", { runId: s.exceptions.run_id ?? "—" })} />
         <Stat label={t("dash.stat.blocking")} value={num(s.tickets.blocking)}
               tone={s.tickets.blocking ? "crit" : "good"}
               note={t("dash.stat.blockingNote", { n: num(s.tickets.awaiting_verify) })} />
-        <Stat label={t("dash.stat.deposit")} value={num(s.facts.total_deposit)}
+        <Stat label={t("dash.stat.deposit")}
+              value={<>{num(s.facts.total_deposit)} <span className="stat-unit">USD</span></>}
               note={t("dash.stat.depositNote")} />
       </div>
 
@@ -127,6 +127,9 @@ export default function DashboardPage() {
         <div className="card">
           <div className="card-head">
             <h2>{t("dash.delta.title")}</h2>
+            <Link className="btn btn-sm" href="/versions">
+              {t("dash.delta.viewVersions")}
+            </Link>
           </div>
           {s.last_signed ? (
             <>

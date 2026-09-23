@@ -116,9 +116,8 @@ export const vi = {
   "dash.goSign": "Sang trang ký",
   "dash.stat.rows": "Dòng trong phạm vi",
   "dash.stat.critical": "Vi phạm nghiêm trọng",
-  "dash.stat.criticalNote": "nghi ngờ — không tự khoá cổng",
-  "dash.stat.warning": "Cảnh báo",
-  "dash.stat.warningNote": "trong phạm vi của bạn",
+  "dash.stat.criticalNote": "nghi ngờ",
+  "dash.stat.warning": "Vi phạm cảnh báo",
   "dash.stat.flagged": "Dòng bị gắn cờ",
   "dash.stat.flaggedNote": "ở lần nạp {runId}",
   "dash.stat.blocking": "Ticket đang chặn",
@@ -145,6 +144,7 @@ export const vi = {
   "dash.delta.empty":
     "Chưa có bản nào được ký. Sang {link} để ký bản đầu tiên — còn nợ vẫn ký được, miễn là kèm phiếu duyệt.",
   "dash.delta.emptyLink": "trang phiên bản",
+  "dash.delta.viewVersions": "Xem phiên bản",
   // ------------------------------------------------------------- bộ luật
   "rules.button": "Xem bộ luật",
   "rules.title": "Bộ luật QC",

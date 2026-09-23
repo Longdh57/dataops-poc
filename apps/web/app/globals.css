@@ -198,6 +198,7 @@ h2 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
   margin-bottom: 5px;
 }
 .stat-value { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
+.stat-unit { font-size: 12px; font-weight: 500; color: var(--muted); }
 .stat-value.sm { font-size: 13px; font-family: var(--mono); font-weight: 600; }
 .stat-note { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
 

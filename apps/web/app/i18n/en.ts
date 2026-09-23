@@ -112,9 +112,8 @@ export const en: Record<MessageKey, string> = {
   "dash.goSign": "Go to signing",
   "dash.stat.rows": "Rows in scope",
   "dash.stat.critical": "Critical violations",
-  "dash.stat.criticalNote": "suspicions — they do not lock the gate",
-  "dash.stat.warning": "Warnings",
-  "dash.stat.warningNote": "within your scope",
+  "dash.stat.criticalNote": "suspicions",
+  "dash.stat.warning": "Warnings violations",
   "dash.stat.flagged": "Flagged rows",
   "dash.stat.flaggedNote": "at load {runId}",
   "dash.stat.blocking": "Blocking tickets",
@@ -141,6 +140,7 @@ export const en: Record<MessageKey, string> = {
   "dash.delta.empty":
     "Nothing has been signed yet. Go to {link} to sign the first version — debt does not stop you, as long as you attach an approval note.",
   "dash.delta.emptyLink": "the versions page",
+  "dash.delta.viewVersions": "View versions",
   // ----------------------------------------------------------- rule book
   "rules.button": "View rule book",
   "rules.title": "QC rule book",
