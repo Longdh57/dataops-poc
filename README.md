@@ -1,158 +1,158 @@
 # Data Operations WebApp
 
-Ung dung noi bo cho doi nghien cuu du lieu. BigQuery la nguon su that,
-Cloud SQL la noi ghi va chiu trach nhiem. Xem `implement-plan.html` cho
-ban thiet ke day du.
+Ứng dụng nội bộ cho đội nghiên cứu dữ liệu. BigQuery là nguồn sự thật,
+Cloud SQL là nơi ghi và chịu trách nhiệm. Xem `implement-plan.html` cho
+bản thiết kế đầy đủ.
 
-## Cau truc
+## Cấu trúc
 
-| Thu muc | Noi dung |
+| Thư mục | Nội dung |
 |---|---|
-| `apps/web` | Next.js 16 + TypeScript — giao dien, AG Grid + TanStack Query |
-| `apps/api` | FastAPI — phuc vu du lieu, phan quyen |
-| `jobs/sync` | BigQuery -> Cloud SQL, chay moi 60s (P2) |
-| `jobs/export` | Sinh Excel/CSV tu ban da ky, qua GCS + signed URL |
-| `jobs/seed` | Nguoi dung thu nghiem + bang fact demo tren BigQuery |
-| `docs` | Runbook van hanh, kich ban demo |
-| `infra` | Terraform, state tren GCS |
-| `rules` | Bo luat QC khai bao bang YAML |
+| `apps/web` | Next.js 16 + TypeScript — giao diện, AG Grid + TanStack Query |
+| `apps/api` | FastAPI — phục vụ dữ liệu, phân quyền |
+| `jobs/sync` | BigQuery -> Cloud SQL, chạy mỗi 60s (P2) |
+| `jobs/export` | Sinh Excel/CSV từ bản đã ký, qua GCS + signed URL |
+| `jobs/seed` | Người dùng thử nghiệm + bảng fact demo trên BigQuery |
+| `docs` | Runbook vận hành, kịch bản demo |
+| `infra` | Terraform, state trên GCS |
+| `rules` | Bộ luật QC khai báo bằng YAML |
 
-## Chay local
+## Chạy local
 
 ```bash
 docker compose up --build
 ```
 
-http://localhost:3000 — dashboard, luoi du lieu, vi pham QC, ticket.
-Doi package.json thi phai dung `docker compose up -d --build --renew-anon-volumes web`,
-vi node_modules nam trong anonymous volume.
+http://localhost:3000 — dashboard, lưới dữ liệu, vi phạm QC, ticket.
+Đổi package.json thì phải dùng `docker compose up -d --build --renew-anon-volumes web`,
+vì node_modules nằm trong anonymous volume.
 Rebuild
 ```bash
 docker compose up -d --build
 ```
 
-## Ha tang da dung (P1)
+## Hạ tầng đã dựng (P1)
 
-| Hang muc | Gia tri |
+| Hạng mục | Giá trị |
 |---|---|
 | Project | `dataops-poc-2026` · number `503189459024` |
 | Region | `asia-southeast1` |
 | VPC | `dataops-vpc` · subnet `10.10.0.0/24` |
-| Cloud SQL | `dataops-pg-42c6` · POSTGRES_17 · db-f1-micro · **chi private IP** `10.70.0.3` |
+| Cloud SQL | `dataops-pg-42c6` · POSTGRES_17 · db-f1-micro · **chỉ private IP** `10.70.0.3` |
 | Cloud Run | `dataops-web`, `dataops-api` — scale-to-zero, Direct VPC egress |
 | Registry | `asia-southeast1-docker.pkg.dev/dataops-poc-2026/dataops` |
-| Secret | `dataops-database-url` — gan vao Cloud Run luc chay |
+| Secret | `dataops-database-url` — gắn vào Cloud Run lúc chạy |
 | TF state | `gs://dataops-poc-2026-tfstate/poc` |
 
-Hai service KHONG public: khong co binding `allUsers`, request khong
-xac thuc tra 403. Truy cap de kiem tra:
+Hai service KHÔNG public: không có binding `allUsers`, request không
+xác thực trả 403. Truy cập để kiểm tra:
 
 ```bash
 curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" https://dataops-web-503189459024.asia-southeast1.run.app
 ```
 
-## Hai viec con lai cua P1 — can lam bang browser
+## Hai việc còn lại của P1 — cần làm bằng browser
 
-Ca hai deu vuong cung mot goc: **project khong thuoc Organization nao**
-(tai khoan gmail ca nhan).
+Cả hai đều vướng cùng một gốc: **project không thuộc Organization nào**
+(tài khoản gmail cá nhân).
 
-### 1. Bat IAP
+### 1. Bật IAP
 
-IAP tren Cloud Run can OAuth client. API `gcloud iap oauth-brands` tra ve
-`Project must belong to an organization`, va API do da bi Google dong vinh
-vien tu 19/03/2026. Phai tao tay:
+IAP trên Cloud Run cần OAuth client. API `gcloud iap oauth-brands` trả về
+`Project must belong to an organization`, và API đó đã bị Google đóng vĩnh
+viễn từ 19/03/2026. Phải tạo tay:
 
-1. Console -> APIs & Services -> OAuth consent screen -> chon **External**
-2. Tao OAuth 2.0 Client ID (Web application), redirect URI:
+1. Console -> APIs & Services -> OAuth consent screen -> chọn **External**
+2. Tạo OAuth 2.0 Client ID (Web application), redirect URI:
    `https://iap.googleapis.com/v1/oauth/clientIds/<CLIENT_ID>:handleRedirect`
-3. Console -> Security -> Identity-Aware Proxy -> bat cho tung Cloud Run service
-4. Sau do trong `infra/terraform.tfvars` dat `iap_enabled = true` roi apply
+3. Console -> Security -> Identity-Aware Proxy -> bật cho từng Cloud Run service
+4. Sau đó trong `infra/terraform.tfvars` đặt `iap_enabled = true` rồi apply
 
-Cach sach hon: dang ky **Cloud Identity Free** cho `3ddesigns.xyz`. Project
-se co Organization, IAP tu cap OAuth client, va tao duoc Google Group that
-de quan ly nguoi dung nhu plan mo ta.
+Cách sạch hơn: đăng ký **Cloud Identity Free** cho `3ddesigns.xyz`. Project
+sẽ có Organization, IAP tự cấp OAuth client, và tạo được Google Group thật
+để quản lý người dùng như plan mô tả.
 
 ### 2. Domain mapping
 
-`gcloud domains list-user-verified` dang trong. Phai verify quyen so huu
-`3ddesigns.xyz` truoc:
+`gcloud domains list-user-verified` đang trống. Phải verify quyền sở hữu
+`3ddesigns.xyz` trước:
 
 ```bash
 gcloud domains verify 3ddesigns.xyz
 ```
 
-Lenh nay mo Search Console. Verify xong:
+Lệnh này mở Search Console. Verify xong:
 
 ```bash
 gcloud beta run domain-mappings create --service=dataops-web --domain=dataops-dev.3ddesigns.xyz --region=asia-southeast1
 gcloud beta run domain-mappings create --service=dataops-api --domain=api-dataops-dev.3ddesigns.xyz --region=asia-southeast1
 ```
 
-Ban ghi CNAME o Cloudflare phai de **DNS only**, khong bat proxy — bat
-proxy thi Google khong cap duoc chung chi.
+Bản ghi CNAME ở Cloudflare phải để **DNS only**, không bật proxy — bật
+proxy thì Google không cấp được chứng chỉ.
 
 ### 3. CI/CD
 
-`.github/workflows/deploy.yml` da san sang. De bat:
+`.github/workflows/deploy.yml` đã sẵn sàng. Để bật:
 
-1. Dat `github_repo = "owner/repo"` trong `infra/terraform.tfvars`, apply
-2. Lay output `workload_identity_provider` va `deployer_email`
+1. Đặt `github_repo = "owner/repo"` trong `infra/terraform.tfvars`, apply
+2. Lấy output `workload_identity_provider` và `deployer_email`
 3. GitHub -> Settings -> Secrets and variables -> Actions -> Variables:
    `GCP_PROJECT_ID`, `GCP_REGION`, `WIF_PROVIDER`, `DEPLOYER_SA`
-4. Settings -> Environments -> tao `production`, dat required reviewer
-   de co buoc duyet tay
+4. Settings -> Environments -> tạo `production`, đặt required reviewer
+   để có bước duyệt tay
 
-## Du lieu (P2, doi nguon o P8)
+## Dữ liệu (P2, đổi nguồn ở P8)
 
-Nguon: [FDIC Summary of Deposits](https://banks.data.fdic.gov/bankfind-suite/SOD)
-(`api.fdic.gov/banks/sod`) — deposit cua tung to chuc ngan hang FDIC bao
-hiem, khao sat hang nam vao 30/6. Du lieu that, cong khai, khong can API
-key. Truoc P8 dung `bigquery-public-data.usa_names` (ten khai sinh o My)
-lam du lieu mau vi cung dang `year, state, <2 truc khac>, so do` — xem
-[docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) cho boi canh
-doi dataset.
+Nguồn: [FDIC Summary of Deposits](https://banks.data.fdic.gov/bankfind-suite/SOD)
+(`api.fdic.gov/banks/sod`) — deposit của từng tổ chức ngân hàng FDIC bảo
+hiểm, khảo sát hàng năm vào 30/6. Dữ liệu thật, công khai, không cần API
+key. Trước P8 dùng `bigquery-public-data.usa_names` (tên khai sinh ở Mỹ)
+làm dữ liệu mẫu vì cùng dạng `year, state, <2 trục khác>, số đo` — xem
+[docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) cho bối cảnh
+đổi dataset.
 
-**Khac voi nguon cu**: FDIC KHONG co san tren `bigquery-public-data` (chi
-co snapshot to chuc/chi nhanh, khong co lich su theo nam), nen
-`jobs/seed/main.py` tu goi API roi nap vao BigQuery — xem muc
-[Seed Job](#seed-job-p8) o duoi.
+**Khác với nguồn cũ**: FDIC KHÔNG có sẵn trên `bigquery-public-data` (chỉ
+có snapshot tổ chức/chi nhánh, không có lịch sử theo năm), nên
+`jobs/seed/main.py` tự gọi API rồi nạp vào BigQuery — xem mục
+[Seed Job](#seed-job-p8) ở dưới.
 
-### Xem tren BigQuery
+### Xem trên BigQuery
 
 ```bash
 bq query --use_legacy_sql=false --location=asia-southeast1 \
  'SELECT run_id, COUNT(*) FROM `dataops-poc-2026.dataops_src.fact_names` GROUP BY run_id'
 ```
 
-Hoac Console: BigQuery -> dataops-poc-2026 -> dataops_src -> fact_names
+Hoặc Console: BigQuery -> dataops-poc-2026 -> dataops_src -> fact_names
 
 | | |
 |---|---|
-| Bang fact | `dataops-poc-2026.dataops_src.fact_names` |
-| Partition | `DATE(loaded_at)` — moi lan nap mot partition |
+| Bảng fact | `dataops-poc-2026.dataops_src.fact_names` |
+| Partition | `DATE(loaded_at)` — mỗi lần nạp một partition |
 | Cluster | `state, institution_id, year` |
-| Cot | run_id, loaded_at, year, state, institution_id, institution, deposit, deposit_share, prev_deposit, prev_year |
+| Cột | run_id, loaded_at, year, state, institution_id, institution, deposit, deposit_share, prev_deposit, prev_year |
 
-`institution_id` (CERT cua FDIC) la khoa THAT cua mot to chuc —
-`institution` (ten hien thi) khong dung lam khoa duoc vi FDIC ghi ten
-khong nhat quan cach viet hoa/thuong giua cac nam (vi du "Keybank" nam
-2022 vs "KeyBank" tu 2023, cung mot CERT).
+`institution_id` (CERT của FDIC) là khóa THẬT của một tổ chức —
+`institution` (tên hiển thị) không dùng làm khóa được vì FDIC ghi tên
+không nhất quán cách viết hoa/thường giữa các năm (ví dụ "Keybank" năm
+2022 vs "KeyBank" từ 2023, cùng một CERT).
 
-`deposit_share` = ty trong deposit cua mot to chuc trong tong deposit cua
-ca bang, nam do. Cong lai dung bang 1.0 o moi nhom `(year, state)` — day
-la co so cho luat QC `deposit_share_sum_not_100`.
+`deposit_share` = tỷ trọng deposit của một tổ chức trong tổng deposit của
+cả bang, năm đó. Cộng lại đúng bằng 1.0 ở mỗi nhóm `(year, state)` — đây
+là cơ sở cho luật QC `deposit_share_sum_not_100`.
 
-### Xem tren Postgres
+### Xem trên Postgres
 
-Cloud SQL chi co private IP nen khong noi truc tiep tu may ca nhan duoc.
-Xem qua giao dien hoac API:
+Cloud SQL chỉ có private IP nên không nối trực tiếp từ máy cá nhân được.
+Xem qua giao diện hoặc API:
 
-- Giao dien: https://dataops-dev.3ddesigns.xyz
-- `GET /api/schema` — toan bo bang kem so dong va dung luong
-- `GET /api/facts?state=CA&year=2026` — du lieu that
-- `GET /api/version` — do tuoi ban sao
+- Giao diện: https://dataops-dev.3ddesigns.xyz
+- `GET /api/schema` — toàn bộ bảng kèm số dòng và dung lượng
+- `GET /api/facts?state=CA&year=2026` — dữ liệu thật
+- `GET /api/version` — độ tuổi bản sao
 
-Duoi local thi noi thang duoc:
+Dưới local thì nối thẳng được:
 
 ```bash
 docker exec dashboard-bigquery-db-1 psql -U dataops -d dataops -c '\d fact_current'
@@ -160,174 +160,174 @@ docker exec dashboard-bigquery-db-1 psql -U dataops -d dataops -c '\d fact_curre
 
 ### Seed Job (P8)
 
-`jobs/seed/main.py` (chi chay tay, `SEED_BIGQUERY=1`, xem docstring "day la
-buoc dung moi truong demo, khong phai duong chay hang ngay"):
+`jobs/seed/main.py` (chỉ chạy tay, `SEED_BIGQUERY=1`, xem docstring "đây là
+bước dựng môi trường demo, không phải đường chạy hàng ngày"):
 
-1. Goi `api.fdic.gov/banks/sod` phan trang (`limit=10000` + `offset`), lay
-   `SEED_YEAR_COUNT` nam gan nhat (mac dinh 5) tinh tu nam moi nhat FDIC co
-   — khong hard-code nam cu the.
-2. Nap (LOAD) du lieu tho muc CHI NHANH vao bang tam
-   `dataops_src.sod_raw_stage` tren BigQuery.
-3. Mot cau SQL gop tu chi nhanh len to chuc (`GROUP BY year, state,
-   institution_id`), tinh `deposit_share` va `prev_deposit`/`prev_year`
-   bang window function — cung mot ky thuat `LAG(...) OVER (...)` nhu
-   truoc, chi doi truc partition.
+1. Gọi `api.fdic.gov/banks/sod` phân trang (`limit=10000` + `offset`), lấy
+   `SEED_YEAR_COUNT` năm gần nhất (mặc định 5) tính từ năm mới nhất FDIC có
+   — không hard-code năm cụ thể.
+2. Nạp (LOAD) dữ liệu thô mức CHI NHÁNH vào bảng tạm
+   `dataops_src.sod_raw_stage` trên BigQuery.
+3. Một câu SQL gộp từ chi nhánh lên tổ chức (`GROUP BY year, state,
+   institution_id`), tính `deposit_share` và `prev_deposit`/`prev_year`
+   bằng window function — cùng một kỹ thuật `LAG(...) OVER (...)` như
+   trước, chỉ đổi trục partition.
 
 ```bash
 GCP_PROJECT_ID=dataops-poc-2026 SEED_BIGQUERY=1 SEED_YEAR_COUNT=5 \
   python jobs/seed/main.py
 ```
 
-Da chay that: 5 nam (2022–2026) → 385.625 dong chi nhanh → gop con
-**31.502 dong** to chuc.
+Đã chạy thật: 5 năm (2022–2026) → 385.625 dòng chi nhánh → gộp còn
+**31.502 dòng** tổ chức.
 
 ### Sync Job
 
 ```
-07:29:05  team Data INSERT vao BigQuery
-07:29:24  Scheduler kich hoat, job phat hien thay doi   (+19s)
-07:29:56  Postgres phan anh xong                        (+51s tong)
+07:29:05  team Data INSERT vào BigQuery
+07:29:24  Scheduler kích hoạt, job phát hiện thay đổi   (+19s)
+07:29:56  Postgres phản ánh xong                        (+51s tổng)
 ```
 
-Phat hien thay doi bang `__TABLES__` — truy van metadata, **quet 0 byte**,
-nen poll moi 60 giay ca ngay khong ton dong nao.
+Phát hiện thay đổi bằng `__TABLES__` — truy vấn metadata, **quét 0 byte**,
+nên poll mỗi 60 giây cả ngày không tốn đồng nào.
 
-Nap: EXPORT DATA -> parquet tren GCS -> COPY vao `fact_staging` ->
-doi ten trong mot transaction. Da kiem chung 1.062 request doc dong thoi
-trong luc doi ten: **0 that bai**.
+Nạp: EXPORT DATA -> parquet trên GCS -> COPY vào `fact_staging` ->
+đổi tên trong một transaction. Đã kiểm chứng 1.062 request đọc đồng thời
+trong lúc đổi tên: **0 thất bại**.
 
-Migration chay bang Cloud Run Job vi Cloud SQL chi co private IP:
+Migration chạy bằng Cloud Run Job vì Cloud SQL chỉ có private IP:
 
 ```bash
 gcloud run jobs execute dataops-migrate --region=asia-southeast1
 ```
 
-### Bai hoc ve hieu nang
+### Bài học về hiệu năng
 
-Cac con so duoi day do luc con dung `usa_names` (~1,2 trieu dong) — dataset
-FDIC hien tai gon hon (31,5 nghin dong) nen sync nhanh hon nhieu, nhung bai
-hoc ve `maintenance_work_mem` van dung, chi la khong con la nut that.
+Các con số dưới đây đo lúc còn dùng `usa_names` (~1,2 triệu dòng) — dataset
+FDIC hiện tại gọn hơn (31,5 nghìn dòng) nên sync nhanh hơn nhiều, nhưng bài
+học về `maintenance_work_mem` vẫn đúng, chỉ là không còn là nút thắt.
 
-Lan dau sync mat **229s** — vuot tieu chi 2 phut. Do log thi 199s trong
-so do la dung index, khong phai COPY. Nguyen nhan: `db-f1-micro` chi co
-~0,6GB RAM nen `maintenance_work_mem` mac dinh rat nho, sap xep khi build
-index tran ra dia PD_HDD.
+Lần đầu sync mất **229s** — vượt tiêu chí 2 phút. Đọc log thì 199s trong
+số đó là dựng index, không phải COPY. Nguyên nhân: `db-f1-micro` chỉ có
+~0,6GB RAM nên `maintenance_work_mem` mặc định rất nhỏ, sắp xếp khi build
+index tràn ra đĩa PD_HDD.
 
-Hai lenh `SET` trong Sync Job dua xuong **33,2s** — nhanh hon 7 lan,
-khong doi phan cung, khong ton them tien:
+Hai lệnh `SET` trong Sync Job đưa xuống **33,2s** — nhanh hơn 7 lần,
+không đổi phần cứng, không tốn thêm tiền:
 
 ```sql
 SET maintenance_work_mem = '160MB';
 SET synchronous_commit = off;
 ```
 
-`synchronous_commit = off` an toan o day vi bang staging la du lieu dung
-mot lan — hong thi sync lai tu BigQuery.
+`synchronous_commit = off` an toàn ở đây vì bảng staging là dữ liệu dùng
+một lần — hỏng thì sync lại từ BigQuery.
 
-## Phan quyen & cong phat hanh (P3)
+## Phân quyền & cổng phát hành (P3)
 
-### Nguyen tac khong duoc pha
+### Nguyên tắc không được phá
 
-Pham vi du lieu LUON lay tu database theo email, KHONG BAO GIO lay tu
-tham so client. Client gui `?state=CA` chi la mot y kien; dieu kien that
-la GIAO giua tham so do va pham vi duoc gan trong `app_role`.
+Phạm vi dữ liệu LUÔN lấy từ database theo email, KHÔNG BAO GIỜ lấy từ
+tham số client. Client gửi `?state=CA` chỉ là một ý kiến; điều kiện thật
+là GIAO giữa tham số đó và phạm vi được gán trong `app_role`.
 
-Kiem chung tren ha tang that:
+Kiểm chứng trên hạ tầng thật:
 
-| Nguoi dung | Pham vi | Goi gi | Nhan duoc |
+| Người dùng | Phạm vi | Gọi gì | Nhận được |
 |---|---|---|---|
-| analyst.tx | TX | `/api/facts` | chi TX |
-| analyst.tx | TX | `/api/facts?state=CA` | **0 dong** |
-| analyst.ca | CA | `/api/facts` | chi CA |
+| analyst.tx | TX | `/api/facts` | chỉ TX |
+| analyst.tx | TX | `/api/facts?state=CA` | **0 dòng** |
+| analyst.ca | CA | `/api/facts` | chỉ CA |
 | sale | CA+TX | `/api/exceptions` | 84 = 37 CA + 47 TX |
 
-Tra ve rong chu khong phai 403, de khong ro ri thong tin bang nao ton tai.
+Trả về rỗng chứ không phải 403, để không rò rỉ thông tin bảng nào tồn tại.
 
-### ~~Khoa lac quan~~ — go o P6
+### ~~Khóa lạc quan~~ — gỡ ở P6
 
-P3 co khoa lac quan tren `fact_override`: hai phien sua cung mot o thi phien
-sau nhan 409 kem diff. P6 bo han viec sua so, nen khong con hai phien nao
-tranh nhau mot o de ma khoa.
+P3 có khóa lạc quan trên `fact_override`: hai phiên sửa cùng một ô thì phiên
+sau nhận 409 kèm diff. P6 bỏ hẳn việc sửa số, nên không còn hai phiên nào
+tranh nhau một ô để mà khóa.
 
-Cho tranh chap chuyen sang bang `ticket`, va duoc giai bang mot rang buoc
-o tang database thay vi mot cot `version`: partial unique index
-`uq_ticket_open_key` chi cho DUNG MOT ticket dang song tren moi o. Nguoi thu
-hai nhan 409 kem id cua ticket da co — khong co cach nao de hai dieu kien
-nghiem thu mau thuan cung ton tai.
+Chỗ tranh chấp chuyển sang bảng `ticket`, và được giải bằng một ràng buộc
+ở tầng database thay vì một cột `version`: partial unique index
+`uq_ticket_open_key` chỉ cho ĐÚNG MỘT ticket đang sống trên mỗi ô. Người thứ
+hai nhận 409 kèm id của ticket đã có — không có cách nào để hai điều kiện
+nghiệm thu mâu thuẫn cùng tồn tại.
 
-### Cong phat hanh
+### Cổng phát hành
 
-Tu P6, vi pham luat KHONG con khoa cong — xem muc [Quy trinh chat luong
-(P6)](#quy-trinh-chat-luong-p6). Chi hai thu khoa cung:
+Từ P6, vi phạm luật KHÔNG còn khóa cổng — xem mục [Quy trình chất lượng
+(P6)](#quy-trình-chất-lượng-p6). Chỉ hai thứ khóa cứng:
 
-| Thao tac | Ket qua |
+| Thao tác | Kết quả |
 |---|---|
-| Ky khi con ticket dang chan | 409 + danh sach ticket |
-| Ky khi QC chua kiem lan nap hien tai | 409 — danh sach vi pham dang hien la cua lan truoc |
-| Ky khi con no ma khong co phieu duyet | 422 |
-| Analyst thu ky | 403 — sai vai tro |
-| Tai file khi con ticket chan | 409 |
+| Ký khi còn ticket đang chặn | 409 + danh sách ticket |
+| Ký khi QC chưa kiểm lần nạp hiện tại | 409 — danh sách vi phạm đang hiện là của lần trước |
+| Ký khi còn nợ mà không có phiếu duyệt | 422 |
+| Analyst thử ký | 403 — sai vai trò |
+| Tải file khi còn ticket chặn | 409 |
 
 ### Endpoint
 
-| Method | Duong dan | Y nghia |
+| Method | Đường dẫn | Ý nghĩa |
 |---|---|---|
-| GET | `/api/me` | danh tinh, vai tro, pham vi |
-| GET | `/api/facts` | loc, sap xep (allowlist), phan trang keyset; so LUON la so nguon |
-| GET | `/api/exceptions` | vi pham cua lan nap hien tai, trong pham vi |
-| POST | `/api/tickets` | bao loi cho team Data — bat buoc co `expected_value` |
-| GET | `/api/tickets` | ticket trong pham vi |
-| PATCH | `/api/tickets/{id}` | mark_fixed / set_blocking / cancel. KHONG co close |
-| GET | `/api/gate` | mon no + hai thu khoa cung |
-| GET | `/api/rules` | bo luat trong `rules/rules.yaml` + noi dung tho cua file |
-| POST | `/api/release` | ky ban so lieu (team_lead), kem phieu duyet |
+| GET | `/api/me` | danh tính, vai trò, phạm vi |
+| GET | `/api/facts` | lọc, sắp xếp (allowlist), phân trang keyset; số LUÔN là số nguồn |
+| GET | `/api/exceptions` | vi phạm của lần nạp hiện tại, trong phạm vi |
+| POST | `/api/tickets` | báo lỗi cho team Data — bắt buộc có `expected_value` |
+| GET | `/api/tickets` | ticket trong phạm vi |
+| PATCH | `/api/tickets/{id}` | mark_fixed / set_blocking / cancel. KHÔNG có close |
+| GET | `/api/gate` | món nợ + hai thứ khóa cứng |
+| GET | `/api/rules` | bộ luật trong `rules/rules.yaml` + nội dung thô của file |
+| POST | `/api/release` | ký bản số liệu (team_lead), kèm phiếu duyệt |
 | POST | `/api/exports` | 202 + job_id |
 
-### Bo luat QC
+### Bộ luật QC
 
-`rules/rules.yaml` — them luat moi chi can them mot muc, khong sua code.
-Nguong dat tu profile du lieu that:
+`rules/rules.yaml` — thêm luật mới chỉ cần thêm một mục, không sửa code.
+Ngưỡng đặt từ profile dữ liệu thật:
 
-| Luat | Muc | Bat duoc (chay that tren 5 nam FDIC, 31.502 dong) |
+| Luật | Mức | Bắt được (chạy thật trên 5 năm FDIC, 31.502 dòng) |
 |---|---|---|
-| deposit_share_sum_not_100 | critical | 0 — kiem tra TONG ca nhom (year,state) ≈ 1.0 |
-| deposit_share_formula_mismatch | critical | 0 — kiem TUNG dong: `deposit_share` phai khop `deposit / tong deposit ca bang`, chi ra dung o nao sai (khac voi luat tren, chi biet ca nhom lech) |
+| deposit_share_sum_not_100 | critical | 0 — kiểm tra TỔNG cả nhóm (year,state) ≈ 1.0 |
+| deposit_share_formula_mismatch | critical | 0 — kiểm TỪNG dòng: `deposit_share` phải khớp `deposit / tổng deposit cả bang`, chỉ ra đúng ô nào sai (khác với luật trên, chỉ biết cả nhóm lệch) |
 | deposit_negative_or_zero | critical | 509 — deposit <= 0 |
-| deposit_spike | critical | 29 — deposit tang >15 lan so nam truoc |
+| deposit_spike | critical | 29 — deposit tăng >15 lần so năm trước |
 | institution_reappeared_after_gap | critical | 0 |
 | unusual_deposit_change | warning | 96 |
 
-Tu P6, `severity` chi con de xep thu tu doc va de loc — no khong quyet dinh
-duoc gi nua. Chi ticket moi chan phat hanh.
+Từ P6, `severity` chỉ còn để xếp thứ tự đọc và để lọc — nó không quyết định
+được gì nữa. Chỉ ticket mới chặn phát hành.
 
-Bo luat doc duoc TU TRONG UNG DUNG: nut **Xem bo luat** tren Dashboard
-(the "Vi pham theo luat") va tren trang Vi pham mo ra ca danh sach luat —
-id, muc, pham vi, cau nguoi dung doc, SQL — lan YAML goc nguyen van. Ai
-doc bao cao cung doi chieu duoc `rule_id` voi luat that ma khong can mo
-repo. API doc file qua `app/rules.py`, nen image API build tu GOC repo de
-kem thu muc `rules/` (xem `apps/api/Dockerfile`).
+Bộ luật đọc được TỪ TRONG ỨNG DỤNG: nút **Xem bộ luật** trên Dashboard
+(thẻ "Vi phạm theo luật") và trên trang Vi phạm mở ra cả danh sách luật —
+id, mức, phạm vi, câu người dùng đọc, SQL — lẫn YAML gốc nguyên văn. Ai
+đọc báo cáo cũng đối chiếu được `rule_id` với luật thật mà không cần mở
+repo. API đọc file qua `app/rules.py`, nên image API build từ GỐC repo để
+kèm thư mục `rules/` (xem `apps/api/Dockerfile`).
 
-Hop nay hien hai version canh nhau va co ly do: version trong FILE (se
-chay o lan QC ke tiep) va version QC DA CHAY tren lan nap hien tai. Lech
-nhau thi co canh bao — khong thi nguoi doc se doi chieu vi pham voi mot
-bo luat chua tung chay.
+Hộp này hiện hai version cạnh nhau và có lý do: version trong FILE (sẽ
+chạy ở lần QC kế tiếp) và version QC ĐÃ CHẠY trên lần nạp hiện tại. Lệch
+nhau thì có cảnh báo — không thì người đọc sẽ đối chiếu vi phạm với một
+bộ luật chưa từng chạy.
 
 ```bash
 gcloud run jobs execute dataops-qc --region=asia-southeast1
 ```
 
-### Danh tinh khi chua co IAP
+### Danh tính khi chưa có IAP
 
-IAP chua bat duoc nen `REQUIRE_IAP=false`, danh tinh lay tu header
-`X-Dev-User`. Giao dien co bo chon danh tinh de thay phan quyen hoat dong:
+IAP chưa bật được nên `REQUIRE_IAP=false`, danh tính lấy từ header
+`X-Dev-User`. Giao diện có bộ chọn danh tính để thấy phân quyền hoạt động:
 
 https://dataops-dev.3ddesigns.xyz/?as=analyst.tx@dataops.test
 
-Bat IAP len thi `REQUIRE_IAP` tu chuyen sang true (buoc theo `iap_enabled`
-trong Terraform), danh tinh den tu JWT Google ky va khong gia duoc.
-Ma verify IAP JWT da viet san trong `app/auth.py` — kiem ca chu ky,
-issuer lan audience, va KHONG tin header `x-goog-authenticated-user-email`
-vi header do gia duoc neu goi thang vao URL run.app.
+Bật IAP lên thì `REQUIRE_IAP` tự chuyển sang true (buộc theo `iap_enabled`
+trong Terraform), danh tính đến từ JWT Google ký và không giả được.
+Mã verify IAP JWT đã viết sẵn trong `app/auth.py` — kiểm cả chữ ký,
+issuer lẫn audience, và KHÔNG tin header `x-goog-authenticated-user-email`
+vì header đó giả được nếu gọi thẳng vào URL run.app.
 
 ### Test
 
@@ -335,403 +335,403 @@ vi header do gia duoc neu goi thang vao URL run.app.
 cd apps/api && pytest tests -q     # 25 test
 ```
 
-## Giao dien (P4)
+## Giao diện (P4)
 
-Nam man hinh, mot thanh loc dung chung, moi thu doc tu API qua mot cong
-duy nhat.
+Năm màn hình, một thanh lọc dùng chung, mọi thứ đọc từ API qua một cổng
+duy nhất.
 
-| Trang | Lam gi |
+| Trang | Làm gì |
 |---|---|
-| `/` | Dashboard: o chi so, chenh lech so voi ban da ky, vi pham theo luat va theo khu vuc, trang thai cong |
-| `/data` | Luoi 1,2 trieu dong bang AG Grid, cuon lien tuc |
-| `/exceptions` | Vi pham cua lan nap hien tai + panel dieu tra ben phai |
-| `/tickets` | Ticket gui team Data — P6 |
-| `/versions` | Ban da ky: ai ky, luc nao, da gui cho khach nao |
-| `/requests` | Sale xin file, theo doi trang thai, tai ve khi xong |
+| `/` | Dashboard: ô chỉ số, chênh lệch so với bản đã ký, vi phạm theo luật và theo khu vực, trạng thái cổng |
+| `/data` | Lưới 1,2 triệu dòng bằng AG Grid, cuộn liên tục |
+| `/exceptions` | Vi phạm của lần nạp hiện tại + panel điều tra bên phải |
+| `/tickets` | Ticket gửi team Data — P6 |
+| `/versions` | Bản đã ký: ai ký, lúc nào, đã gửi cho khách nào |
+| `/requests` | Sale xin file, theo dõi trạng thái, tải về khi xong |
 
-### Song ngu vi / en
+### Song ngữ vi / en
 
-Nut `VI | EN` o goc phai thanh tren. Khong them thu vien i18n nao — mot
-React context nho trong `apps/web/app/i18n` la du cho hai ngon ngu.
+Nút `VI | EN` ở góc phải thanh trên. Không thêm thư viện i18n nào — một
+React context nhỏ trong `apps/web/app/i18n` là đủ cho hai ngôn ngữ.
 
-| File | Lam gi |
+| File | Làm gì |
 |---|---|
-| `app/i18n/vi.ts` | Tu dien goc, dong thoi la nguon khai bao `MessageKey` |
-| `app/i18n/en.ts` | Ban tieng Anh, kieu `Record<MessageKey, string>` |
-| `app/i18n/translate.ts` | `translate()` / `template()` / `split()` — khong dinh React |
+| `app/i18n/vi.ts` | Từ điển gốc, đồng thời là nguồn khai báo `MessageKey` |
+| `app/i18n/en.ts` | Bản tiếng Anh, kiểu `Record<MessageKey, string>` |
+| `app/i18n/translate.ts` | `translate()` / `template()` / `split()` — không dính React |
 | `app/i18n/context.tsx` | `I18nProvider`, `useI18n()` (`t`, `tn`), `useFmt()` |
-| `app/i18n/server.ts` | `getLocale()` — doc cookie o phia server |
+| `app/i18n/server.ts` | `getLocale()` — đọc cookie ở phía server |
 
-Ba diem dang nho:
+Ba điểm đáng nhớ:
 
-- **Them chuoi moi thi them vao `vi.ts` truoc.** `en.ts` khai bao kieu
-  `Record<MessageKey, string>` nen thieu khoa la `npm run typecheck` do,
-  khong phai doi toi luc nguoi dung thay o trong.
-- **`t()` tra chuoi, `tn()` tra JSX.** Cau nao co `<b>` hay `<Link>` o
-  giua thi dung `tn("khoa", { cho: <b>…</b> })` — cho trong `{ten}` trong
-  template duoc thay bang node, khong phai noi chuoi.
-- **Ngon ngu nam trong cookie `dataops_lang`, doc o root layout.** HTML
-  tu server da dung thu tieng va `<html lang>` dung ngay tu dau — khong
-  chop mot nhip tieng Viet roi moi doi. Doi lai: moi route thanh dynamic
-  thay vi prerender tinh. Ung dung nay lay het du lieu qua fetch o client
-  nen khong mat gi.
+- **Thêm chuỗi mới thì thêm vào `vi.ts` trước.** `en.ts` khai báo kiểu
+  `Record<MessageKey, string>` nên thiếu khóa là `npm run typecheck` đỏ,
+  không phải đợi tới lúc người dùng thấy ô trống.
+- **`t()` trả chuỗi, `tn()` trả JSX.** Câu nào có `<b>` hay `<Link>` ở
+  giữa thì dùng `tn("khoa", { cho: <b>…</b> })` — chỗ trống `{ten}` trong
+  template được thay bằng node, không phải nối chuỗi.
+- **Ngôn ngữ nằm trong cookie `dataops_lang`, đọc ở root layout.** HTML
+  từ server đã đúng thứ tiếng và `<html lang>` đúng ngay từ đầu — không
+  chớp một nhịp tiếng Việt rồi mới đổi. Đổi lại: mọi route thành dynamic
+  thay vì prerender tĩnh. Ứng dụng này lấy hết dữ liệu qua fetch ở client
+  nên không mất gì.
 
-So va ngay thang di theo ngon ngu (`useFmt()` — `1.204.881` vs
-`1,204,881`). Con **noi dung tu API van giu nguyen**: tieu de ticket,
-phieu duyet, `detail` cua loi HTTP, va cau tra loi cua AI Agent —
-`SYSTEM_PROMPT` trong `apps/api/app/agent.py` van la tieng Viet.
+Số và ngày tháng đi theo ngôn ngữ (`useFmt()` — `1.204.881` vs
+`1,204,881`). Còn **nội dung từ API vẫn giữ nguyên**: tiêu đề ticket,
+phiếu duyệt, `detail` của lỗi HTTP, và câu trả lời của AI Agent —
+`SYSTEM_PROMPT` trong `apps/api/app/agent.py` vẫn là tiếng Việt.
 
-### Trinh duyet khong goi thang API
+### Trình duyệt không gọi thẳng API
 
-`dataops-api` khong public: chi service account cua web goi duoc bang OIDC
-token. Trinh duyet khong co token do, nen moi request di qua route handler
-`apps/web/app/api/gw/[...path]/route.ts` — Next.js lay token tu metadata
-server roi goi tiep. Co IAP thi chuyen tiep nguyen assertion cua Google;
-chua co thi lay danh tinh tu cookie `dataops_as` (duong nay chi mo khi
+`dataops-api` không public: chỉ service account của web gọi được bằng OIDC
+token. Trình duyệt không có token đó, nên mọi request đi qua route handler
+`apps/web/app/api/gw/[...path]/route.ts` — Next.js lấy token từ metadata
+server rồi gọi tiếp. Có IAP thì chuyển tiếp nguyên assertion của Google;
+chưa có thì lấy danh tính từ cookie `dataops_as` (đường này chỉ mở khi
 `REQUIRE_IAP=false`).
 
-### Luoi du lieu: vi sao Client-Side Row Model
+### Lưới dữ liệu: vì sao Client-Side Row Model
 
-API phan trang theo keyset (cursor), khong theo offset — nen khong nhay
-den "dong thu 50.000" duoc, ma Infinite Row Model cua AG Grid lai can
-dung dieu do. Cach hop voi keyset la noi tiep cac slice 500 dong vao mot
-mang trong bo nho va de AG Grid ao hoa phan hien thi. Cuon gan cuoi thi
-`onBodyScrollEnd` tu goi slice sau.
+API phân trang theo keyset (cursor), không theo offset — nên không nhảy
+đến "dòng thứ 50.000" được, mà Infinite Row Model của AG Grid lại cần
+đúng điều đó. Cách hợp với keyset là nối tiếp các slice 500 dòng vào một
+mảng trong bộ nhớ và để AG Grid ảo hóa phần hiển thị. Cuộn gần cuối thì
+`onBodyScrollEnd` tự gọi slice sau.
 
-Cai gia phai noi ro voi nguoi dung, va giao dien co ghi: **bam tieu de cot
-chi sap xep trong so dong da tai**. Muon sap xep toan bo thi doi o "Sap
-xep toan bo" — cai do chay o server va nap lai tu dau.
+Cái giá phải nói rõ với người dùng, và giao diện có ghi: **bấm tiêu đề cột
+chỉ sắp xếp trong số dòng đã tải**. Muốn sắp xếp toàn bộ thì đổi ô "Sắp
+xếp toàn bộ" — cái đó chạy ở server và nạp lại từ đầu.
 
-### Panel dieu tra nhin tu giao dien
+### Panel điều tra nhìn từ giao diện
 
-Tu P6 panel chi de DOC va de quyet dinh. No dat ban da ky gan nhat canh lan
-nap hien tai — cau hoi that su la "so nay co that su doi khong", chu khong
-phai "sua thanh bao nhieu". O nhap duy nhat con lai la *So dung phai la*, va
-no khong ghi vao du lieu: no thanh dieu kien nghiem thu cua mot ticket.
+Từ P6 panel chỉ để ĐỌC và để quyết định. Nó đặt bản đã ký gần nhất cạnh lần
+nạp hiện tại — câu hỏi thật sự là "số này có thật sự đổi không", chứ không
+phải "sửa thành bao nhiêu". Ô nhập duy nhất còn lại là *Số đúng phải là*, và
+nó không ghi vào dữ liệu: nó thành điều kiện nghiệm thu của một ticket.
 
-O nao da co ticket thi panel hien nguyen trang thai ticket do thay cho form,
-kem hai viec lam duoc: *Nguon da sua — nho QC xac minh*, va *Bao nham — huy
-ticket*. Khong co nut dong.
+Ô nào đã có ticket thì panel hiện nguyên trạng thái ticket đó thay cho form,
+kèm hai việc làm được: *Nguồn đã sửa — nhờ QC xác minh*, và *Báo nhầm — hủy
+ticket*. Không có nút đóng.
 
-### Hai nut de bam nham
+### Hai nút dễ bấm nhầm
 
-| Nut | Lam gi | Mat bao lau |
+| Nút | Làm gì | Mất bao lâu |
 |---|---|---|
-| **Lam moi bang** | goi lai API, doc ban sao Postgres | vai chuc ms |
-| **Nap lai tu nguon** | chay han Sync Job: doc lai BigQuery, staging, doi ten | 30–60s |
+| **Làm mới bảng** | gọi lại API, đọc bản sao Postgres | vài chục ms |
+| **Nạp lại từ nguồn** | chạy hẳn Sync Job: đọc lại BigQuery, staging, đổi tên | 30–60s |
 
-Nut thu hai mau do, chi team lead tro len thay, va co mot buoc hoi lai.
+Nút thứ hai màu đỏ, chỉ team lead trở lên thấy, và có một bước hỏi lại.
 
-### Banner do tuoi
+### Banner độ tuổi
 
-Poll `/api/version` moi 30 giay. Thay `run_id` khac cai dang hien thi thi
-hien banner kem nut *Tai lai* — **khong tu lam moi**, vi nguoi dung co the
-dang go do dang trong panel dieu tra.
+Poll `/api/version` mỗi 30 giây. Thấy `run_id` khác cái đang hiển thị thì
+hiện banner kèm nút *Tải lại* — **không tự làm mới**, vì người dùng có thể
+đang gõ dở dang trong panel điều tra.
 
-### Endpoint P4 them vao
+### Endpoint P4 thêm vào
 
-| Method | Duong dan | Y nghia |
+| Method | Đường dẫn | Ý nghĩa |
 |---|---|---|
-| GET | `/api/summary` | toan bo so lieu dashboard trong mot lan goi |
-| GET | `/api/options` | gia tri cho thanh loc — cung ap pham vi |
-| GET | `/api/exceptions/{id}` | chi tiet cho panel dieu tra, kem ticket cua o do |
-| GET | `/api/versions` | ban da ky + da gui cho ai |
-| POST | `/api/versions/{id}/sent` | ghi nhan da gui cho khach |
-| GET | `/api/exports` | job cua chinh minh |
-| GET | `/api/exports/{id}/download` | signed URL 15 phut, chan khi con ticket chan |
-| POST | `/api/rebuild` | kich hoat Sync Job (team_lead tro len) |
+| GET | `/api/summary` | toàn bộ số liệu dashboard trong một lần gọi |
+| GET | `/api/options` | giá trị cho thanh lọc — cũng áp phạm vi |
+| GET | `/api/exceptions/{id}` | chi tiết cho panel điều tra, kèm ticket của ô đó |
+| GET | `/api/versions` | bản đã ký + đã gửi cho ai |
+| POST | `/api/versions/{id}/sent` | ghi nhận đã gửi cho khách |
+| GET | `/api/exports` | job của chính mình |
+| GET | `/api/exports/{id}/download` | signed URL 15 phút, chặn khi còn ticket chặn |
+| POST | `/api/rebuild` | kích hoạt Sync Job (team_lead trở lên) |
 
-### Kich ban da chay tron
+### Kịch bản đã chạy trọn
 
-Chay tren docker compose local, du lieu that 1.222.947 dong:
+Chạy trên docker compose local, dữ liệu thật 1.222.947 dòng:
 
-1. Dashboard bao 382 vi pham (21 nghiem trong), cong **cho ky kem phieu duyet**
-2. Mo mot vi pham -> panel hien so cua lan nap canh ban da ky
-3. Mo ticket voi `expected_value` -> cong chuyen **KHOA**, badge tab do
-4. Bam *Da sua nguon* -> ticket sang `awaiting_verify`, van chan
-5. Chay lai QC khi nguon chua doi that -> ticket **bat nguoc ve `open`** kem
-   so doc duoc
-6. Go chan ticket (team lead, co ly do) -> ky kem phieu duyet -> `signed_version`
-   ghi van tay, so vi pham theo luat, version luat, ticket chua dong
-7. Doi danh tinh sang sale -> xin file -> job vao hang doi `pending`
+1. Dashboard báo 382 vi phạm (21 nghiêm trọng), cổng **chờ ký kèm phiếu duyệt**
+2. Mở một vi phạm -> panel hiện số của lần nạp cạnh bản đã ký
+3. Mở ticket với `expected_value` -> cổng chuyển **KHÓA**, badge tab đỏ
+4. Bấm *Đã sửa nguồn* -> ticket sang `awaiting_verify`, vẫn chặn
+5. Chạy lại QC khi nguồn chưa đổi thật -> ticket **bật ngược về `open`** kèm
+   số đọc được
+6. Gỡ chặn ticket (team lead, có lý do) -> ký kèm phiếu duyệt -> `signed_version`
+   ghi vân tay, số vi phạm theo luật, version luật, ticket chưa đóng
+7. Đổi danh tính sang sale -> xin file -> job vào hàng đợi `pending`
 
-Buoc 1–6 la kich ban P6, da chay tron tren docker compose local. Buoc cuoi
-(file tai ve duoc) can Export Job chay that.
+Bước 1–6 là kịch bản P6, đã chạy trọn trên docker compose local. Bước cuối
+(file tải về được) cần Export Job chạy thật.
 
-### Con thieu so voi plan
+### Còn thiếu so với plan
 
-- ~~Bo loc "cong ty" trong plan anh xa sang "ten" o bo du lieu nay~~ — het
-  con no tu P8: dataset FDIC co dung chieu to chuc (`institution`), bo loc
-  o giao dien la tim theo ten to chuc that.
-- Export Job chua dung lich chay, nen job dung o `pending`. Giao dien da
-  xu ly du bon trang thai `pending / running / done / error`.
+- ~~Bộ lọc "công ty" trong plan ánh xạ sang "tên" ở bộ dữ liệu này~~ — hết
+  còn nợ từ P8: dataset FDIC có đúng chiều tổ chức (`institution`), bộ lọc
+  ở giao diện là tìm theo tên tổ chức thật.
+- Export Job chưa dựng lịch chạy, nên job dừng ở `pending`. Giao diện đã
+  xử lý đủ bốn trạng thái `pending / running / done / error`.
 
-## Hoan thien & ban giao (P5)
+## Hoàn thiện & bàn giao (P5)
 
-### File gui khach xuat tu dau
+### File gửi khách xuất từ đâu
 
-Cau hoi nghe don gian nhung la cho de sai nhat. Truoc P5, Export Job query
-`WHERE run_id IS NOT NULL` — tuc la lay TAT CA lan nap co trong BigQuery.
-Do chung tren du lieu that:
+Câu hỏi nghe đơn giản nhưng là chỗ dễ sai nhất. Trước P5, Export Job query
+`WHERE run_id IS NOT NULL` — tức là lấy TẤT CẢ lần nạp có trong BigQuery.
+Đo trên dữ liệu thật:
 
-| | So dong |
+| | Số dòng |
 |---|---|
-| File xuat ra | 1.318.023 |
-| Ban da ky | 1.222.947 |
-| Thua | **95.076** |
+| File xuất ra | 1.318.023 |
+| Bản đã ký | 1.222.947 |
+| Thừa | **95.076** |
 
-95 nghin dong do chua qua rule engine, chua qua cong phat hanh, khong nam
-trong ban Team Lead da ky.
+95 nghìn dòng đó chưa qua rule engine, chưa qua cổng phát hành, không nằm
+trong bản Team Lead đã ký.
 
-Goc re: `run_id` la HAI thu khac nhau.
+Gốc rễ: `run_id` là HAI thứ khác nhau.
 
-| Cot | Vi du | Ai dat |
+| Cột | Ví dụ | Ai đặt |
 |---|---|---|
-| `sync_state.last_run_id`, `signed_version.run_id` | `run-20260920T070541` | Sync Job, moi luot dong bo |
-| `fact_names.run_id` tren BigQuery | `run-2026-09-20-001` | team Data, moi lan nap du lieu |
+| `sync_state.last_run_id`, `signed_version.run_id` | `run-20260920T070541` | Sync Job, mỗi lượt đồng bộ |
+| `fact_names.run_id` trên BigQuery | `run-2026-09-20-001` | team Data, mỗi lần nạp dữ liệu |
 
-Loc BigQuery bang nhan cua Sync Job thi tra ve 0 dong — nen code cu danh
-lay tat. P5 noi hai khong gian nay lai:
+Lọc BigQuery bằng nhãn của Sync Job thì trả về 0 dòng — nên code cũ đành
+lấy tất. P5 nối hai không gian này lại:
 
-1. Sync Job ghi `sync_state.source_run_ids` — nhung lan nap dang co trong
-   ban sao. Doc tu Postgres sau khi swap nen ton 0 dong chi phi query.
-2. Ky phat hanh dong bang danh sach do vao `signed_version.source_run_ids`.
-3. Export Job loc `WHERE run_id IN UNNEST(@runs)`.
+1. Sync Job ghi `sync_state.source_run_ids` — những lần nạp đang có trong
+   bản sao. Đọc từ Postgres sau khi swap nên tốn 0 đồng chi phí query.
+2. Ký phát hành đóng băng danh sách đó vào `signed_version.source_run_ids`.
+3. Export Job lọc `WHERE run_id IN UNNEST(@runs)`.
 
-Ban ky tu truoc P5 khong co danh sach nay se bi Export Job tu choi, kem
-thong bao noi ro phai ky lai — thay vi lang le xuat sai.
+Bản ký từ trước P5 không có danh sách này sẽ bị Export Job từ chối, kèm
+thông báo nói rõ phải ký lại — thay vì lặng lẽ xuất sai.
 
-### Ba rang buoc con lai cua Export Job
+### Ba ràng buộc còn lại của Export Job
 
-- **Pham vi**: sale pham vi CA+TX xin file thi nhan dung 170.682 dong cua
-  CA va TX. Pham vi duoc chot luc XIN FILE, khong phai luc job chay — doi
-  pham vi cua ho hom sau khong lam doi file da phat.
-- **Thi phan giu nguyen cua nguon**: tu P6 khong ai sua so nua, nen khong
-  con phai tinh lai thi phan — con so cua BigQuery da dung san. Day la mot
-  nhanh code phuc tap bien mat theo bang `fact_override`.
-- **Gioi han Excel**: 1.048.576 dong mot sheet. Vuot thi tach sheet va ghi
-  canh bao vao `export_job.warning`, KHONG lang le cat bot dong.
+- **Phạm vi**: sale phạm vi CA+TX xin file thì nhận đúng 170.682 dòng của
+  CA và TX. Phạm vi được chốt lúc XIN FILE, không phải lúc job chạy — đổi
+  phạm vi của họ hôm sau không làm đổi file đã phát.
+- **Thị phần giữ nguyên của nguồn**: từ P6 không ai sửa số nữa, nên không
+  còn phải tính lại thị phần — con số của BigQuery đã đúng sẵn. Đây là một
+  nhánh code phức tạp biến mất theo bảng `fact_override`.
+- **Giới hạn Excel**: 1.048.576 dòng một sheet. Vượt thì tách sheet và ghi
+  cảnh báo vào `export_job.warning`, KHÔNG lặng lẽ cắt bớt dòng.
 
-### Kich hoat job
+### Kích hoạt job
 
-`POST /api/exports` goi thang Cloud Run Job kem `EXPORT_JOB_ID`, khong dung
-Scheduler poll. Poll moi 1-2 phut se bat nguoi dung cho vo co du hang doi
-rong.
+`POST /api/exports` gọi thẳng Cloud Run Job kèm `EXPORT_JOB_ID`, không dùng
+Scheduler poll. Poll mỗi 1-2 phút sẽ bắt người dùng chờ vô cớ dù hàng đợi
+rỗng.
 
-Goi that bai — chay local, job chua deploy, thieu quyen — thi yeu cau VAN
-nam trong hang doi va API noi ro ly do. Trang thai te nhat la da ghi vao
-database ma nguoi dung tuong la chua.
+Gọi thất bại — chạy local, job chưa deploy, thiếu quyền — thì yêu cầu VẪN
+nằm trong hàng đợi và API nói rõ lý do. Trạng thái tệ nhất là đã ghi vào
+database mà người dùng tưởng là chưa.
 
-### Bo luat: them `scope` va kiem tra cau hinh
+### Bộ luật: thêm `scope` và kiểm tra cấu hình
 
-Luat gio co nam phan: `id`, `severity`, `scope` (tuy chon), `message`, `sql`.
-Job tu choi chay neu file sai cau truc va bao **het loi mot luot** — file
-nay bi sua boi nguoi khong doc code, bao tung loi mot thi ho phai doan.
+Luật giờ có năm phần: `id`, `severity`, `scope` (tùy chọn), `message`, `sql`.
+Job từ chối chạy nếu file sai cấu trúc và báo **hết lỗi một lượt** — file
+này bị sửa bởi người không đọc code, báo từng lỗi một thì họ phải đoán.
 
-### Giam sat
+### Giám sát
 
-| Canh bao | Bat cai gi |
+| Cảnh báo | Bắt cái gì |
 |---|---|
-| Sync Job im lang qua 30 phut | Ban sao cu dan ma khong ai biet |
-| Cloud Run Job that bai | Job co chay, co bao loi, nhung khong ai doc log |
-| Web khong phan hoi | Uptime check tu ba chau luc |
+| Sync Job im lặng quá 30 phút | Bản sao cũ dần mà không ai biết |
+| Cloud Run Job thất bại | Job có chạy, có báo lỗi, nhưng không ai đọc log |
+| Web không phản hồi | Uptime check từ ba châu lục |
 
-Dashboard `Dataops — do tre dong bo va suc khoe job`: khoang trong tren
-bieu do "lan sync thanh cong" chinh la do tre dong bo.
+Dashboard `Dataops — do tre dong bo va suc khoe job`: khoảng trống trên
+biểu đồ "lần sync thành công" chính là độ trễ đồng bộ.
 
-### Terraform hoa toan bo
+### Terraform hóa toàn bộ
 
-| Truoc P5 | Sau P5 |
+| Trước P5 | Sau P5 |
 |---|---|
-| 3 service account tao bang gcloud | `module.iam` quan ly, co import script |
-| Dataset BigQuery tao tay | `module.data` |
-| Khong co Export Job, Seed Job | Ca hai trong `module.runtime` |
-| `secretAccessor` cap o ca project lan secret | Terraform chi cap o cap secret |
+| 3 service account tạo bằng gcloud | `module.iam` quản lý, có import script |
+| Dataset BigQuery tạo tay | `module.data` |
+| Không có Export Job, Seed Job | Cả hai trong `module.runtime` |
+| `secretAccessor` cấp ở cả project lẫn secret | Terraform chỉ cấp ở cấp secret |
 
-Du an dang chay phai import mot lan truoc khi apply:
+Dự án đang chạy phải import một lần trước khi apply:
 
 ```bash
 ./scripts/import-existing.sh dataops-poc-2026
 cd infra && terraform apply
 ```
 
-Import khong dong toi tai nguyen that — no chi ghi vao state rang tai
-nguyen do tu nay thuoc ve Terraform.
+Import không động tới tài nguyên thật — nó chỉ ghi vào state rằng tài
+nguyên đó từ nay thuộc về Terraform.
 
-### CI/CD: hai buoc bi thieu
+### CI/CD: hai bước bị thiếu
 
-Pipeline cu build API va Web, roi deploy. Thieu hai thu khien deploy xong
-la hong:
+Pipeline cũ build API và Web, rồi deploy. Thiếu hai thứ khiến deploy xong
+là hỏng:
 
-- **Migration khong chay.** Code moi gap schema cu la 500 ngay tren man
-  hinh nguoi dung. Gio `deploy-staging` cap nhat image cho job
-  `dataops-migrate` roi chay `alembic upgrade head` va **doi xong** truoc
-  khi deploy API. Thu tu nay an toan vi migration chi them cot — code cu
-  van chay duoc voi schema moi.
-- **Image cua job khong duoc cap nhat.** Sync, QC, Export, Seed khong phai
-  service nen khong co "deploy". Thieu buoc `gcloud run jobs update` thi
-  chung chay code cu mai ma khong ai thay gi bat thuong. Image `jobs` gio
-  cung duoc build trong CI.
+- **Migration không chạy.** Code mới gặp schema cũ là 500 ngay trên màn
+  hình người dùng. Giờ `deploy-staging` cập nhật image cho job
+  `dataops-migrate` rồi chạy `alembic upgrade head` và **đợi xong** trước
+  khi deploy API. Thứ tự này an toàn vì migration chỉ thêm cột — code cũ
+  vẫn chạy được với schema mới.
+- **Image của job không được cập nhật.** Sync, QC, Export, Seed không phải
+  service nên không có "deploy". Thiếu bước `gcloud run jobs update` thì
+  chúng chạy code cũ mãi mà không ai thấy gì bất thường. Image `jobs` giờ
+  cũng được build trong CI.
 
-### Tai lieu
+### Tài liệu
 
-- [docs/runbook.md](docs/runbook.md) — lam moi khac nap lai ra sao, sync
-  loi thi lam gi, quay lai phien ban truoc, them nguoi dung, dung lai tu
-  project trong
-- [docs/demo.md](docs/demo.md) — kich ban trinh bay 5 phut
-- [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) — quy trinh
-  chat luong: loi di vao tu dau, ai duyet, ban ky ghi gi, va bon quyet dinh
-  phat sinh luc cai dat. DOC TRUOC khi sua QC, ticket hay cho ky.
+- [docs/runbook.md](docs/runbook.md) — làm mới khác nạp lại ra sao, sync
+  lỗi thì làm gì, quay lại phiên bản trước, thêm người dùng, dựng lại từ
+  project trống
+- [docs/demo.md](docs/demo.md) — kịch bản trình bày 5 phút
+- [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md) — quy trình
+  chất lượng: lỗi đi vào từ đâu, ai duyệt, bản ký ghi gì, và bốn quyết định
+  phát sinh lúc cài đặt. ĐỌC TRƯỚC khi sửa QC, ticket hay chỗ ký.
 
 ### Test
 
 ```bash
-cd apps/api && pytest tests -q   # 54 test: phan quyen, ticket, cong, phieu duyet, export, AI Agent
-pytest jobs/tests -q             # 18 test: logic export, bo luat, mirror len BigQuery — khong can cloud
+cd apps/api && pytest tests -q   # 54 test: phân quyền, ticket, cổng, phiếu duyệt, export, AI Agent
+pytest jobs/tests -q             # 18 test: logic export, bộ luật, mirror lên BigQuery — không cần cloud
 ```
 
-`jobs/tests` chay duoc ma khong can cloud: phan de sai nhat cua Export Job la
-dau ban ky, cat sheet va dinh dang dong — deu la ham thuan.
+`jobs/tests` chạy được mà không cần cloud: phần dễ sai nhất của Export Job là
+dấu bản ký, cắt sheet và định dạng dòng — đều là hàm thuần.
 
-Hai test dang gia nhat, vi chung giu dung cai de mat nhat khi sua code sau nay:
+Hai test đáng giá nhất, vì chúng giữ đúng cái dễ mất nhất khi sửa code sau này:
 
-- `test_nguoi_khong_dong_duoc_ticket` — khong co duong nao dong ticket bang tay.
-- `test_facts_tra_ve_so_cua_nguon_chu_khong_sua` — khong co duong nao lam so
-  doc ra khac so trong `fact_current`.
+- `test_nguoi_khong_dong_duoc_ticket` — không có đường nào đóng ticket bằng tay.
+- `test_facts_tra_ve_so_cua_nguon_chu_khong_sua` — không có đường nào làm số
+  đọc ra khác số trong `fact_current`.
 
-## Quy trinh chat luong (P6)
+## Quy trình chất lượng (P6)
 
-Quy trinh day du o [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md).
-Ba thay doi lon so voi P3–P5:
+Quy trình đầy đủ ở [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md).
+Ba thay đổi lớn so với P3–P5:
 
-**1. Ung dung khong sua so nua.** Bang `fact_override` bi bo han, cung voi
-`apply` / `park` / `send_back`. Truoc kia so sua tay chi song trong Postgres
-va duoc ap len luc xuat file — nghia la file gui khach va BigQuery co the
-lech nhau ma khong ai phat hien, va override khong bao gio het han nen no
-con de len ca so ma team Data da sua DUNG o lan nap sau. Bay gio so sai thi
-mo ticket, team Data sua o nguon.
+**1. Ứng dụng không sửa số nữa.** Bảng `fact_override` bị bỏ hẳn, cùng với
+`apply` / `park` / `send_back`. Trước kia số sửa tay chỉ sống trong Postgres
+và được áp lên lúc xuất file — nghĩa là file gửi khách và BigQuery có thể
+lệch nhau mà không ai phát hiện, và override không bao giờ hết hạn nên nó
+còn đè lên cả số mà team Data đã sửa ĐÚNG ở lần nạp sau. Bây giờ số sai thì
+mở ticket, team Data sửa ở nguồn.
 
-**2. Ticket mang dieu kien nghiem thu, va chi QC moi dong duoc.** Moi ticket
-ghi `expected_value`; sau moi lan nap, QC doc so that len va doi chieu. Khop
-thi dong, lech ma nguoi ta da bao "da sua" thi bat nguoc ve `open` kem so doc
-duoc. Khong co endpoint nao dong ticket bang tay — do la diem quyet dinh cua
-ca quy trinh, vi "da sua roi" la loi hua con cot nay la bang chung.
+**2. Ticket mang điều kiện nghiệm thu, và chỉ QC mới đóng được.** Mỗi ticket
+ghi `expected_value`; sau mỗi lần nạp, QC đọc số thật lên và đối chiếu. Khớp
+thì đóng, lệch mà người ta đã báo "đã sửa" thì bật ngược về `open` kèm số đọc
+được. Không có endpoint nào đóng ticket bằng tay — đó là điểm quyết định của
+cả quy trình, vì "đã sửa rồi" là lời hứa còn cột này là bằng chứng.
 
-**3. Vi pham luat khong khoa cong; phieu duyet thay cho viec do.** Vi pham la
-nghi ngo cua may: no bo sot duoc (10 tre nhap thanh 20 thi khong luat nao bat)
-va bao nham duoc. Nen team lead ky duoc du con vi pham, mien la viet phieu
-duyet — va phieu do di theo ban ky vinh vien, in ca vao file gui khach. Cai
-khoa cung chi con ticket dang chan, va truong hop QC chua kiem lan nap hien
-tai.
+**3. Vi phạm luật không khóa cổng; phiếu duyệt thay cho việc đó.** Vi phạm là
+nghi ngờ của máy: nó bỏ sót được (10 trẻ nhập thành 20 thì không luật nào bắt)
+và báo nhầm được. Nên team lead ký được dù còn vi phạm, miễn là viết phiếu
+duyệt — và phiếu đó đi theo bản ký vĩnh viễn, in cả vào file gửi khách. Cái
+khóa cứng chỉ còn ticket đang chặn, và trường hợp QC chưa kiểm lần nạp hiện
+tại.
 
-Ban ky tu day ghi them: van tay du lieu (`checksum`), so o vi pham theo tung
-luat, van tay tap vi pham, version cua `rules.yaml`, va danh sach ticket chua
-dong. Van tay du lieu la de bat truong hop team Data sua so TAI CHO duoi cung
-mot `run_id` — luc do nhan van the ma so da khac.
+Bản ký từ đây ghi thêm: vân tay dữ liệu (`checksum`), số ô vi phạm theo từng
+luật, vân tay tập vi phạm, version của `rules.yaml`, và danh sách ticket chưa
+đóng. Vân tay dữ liệu là để bắt trường hợp team Data sửa số TẠI CHỖ dưới cùng
+một `run_id` — lúc đó nhãn vẫn thế mà số đã khác.
 
 ```bash
 # Migration
 cd apps/api && alembic upgrade head    # c3a71e5b9042
 
-# Sinh lai vi pham + doi chieu ticket
+# Sinh lại vi phạm + đối chiếu ticket
 FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
 ```
 
-## AI Agent — doc them tren QC (P7, demo; chuyen sang Google ADK o P9)
+## AI Agent — đọc thêm trên QC (P7, demo; chuyển sang Google ADK ở P9)
 
-Theo [Demo_Build_Spec.md](Demo_Build_Spec.md): Deterministic QC Engine (bo
-luat `rules/rules.yaml` + `jobs/qc`) bat loi cung tu dong; AI Agent la mot
-lop **doc them**, khong thay the — 4 tool cua no deu la SELECT trong pham vi
-nguoi hoi, khong tool nao ghi/sua duoc gi. Agent khong dong ticket, khong ky
-ban, khong sua so — ba viec do van chi lam duoc qua co che da co o P3/P6 (QC
-Runner doi chieu, `POST /api/release`, mo ticket).
+Theo [Demo_Build_Spec.md](Demo_Build_Spec.md): Deterministic QC Engine (bộ
+luật `rules/rules.yaml` + `jobs/qc`) bắt lỗi cứng tự động; AI Agent là một
+lớp **đọc thêm**, không thay thế — 4 tool của nó đều là SELECT trong phạm vi
+người hỏi, không tool nào ghi/sửa được gì. Agent không đóng ticket, không ký
+bản, không sửa số — ba việc đó vẫn chỉ làm được qua cơ chế đã có ở P3/P6 (QC
+Runner đối chiếu, `POST /api/release`, mở ticket).
 
-**P9 doi kien truc**: tu "RAG-lite" (nhoi san toan bo ngu canh vao prompt
-moi luot hoi) sang [Google ADK](https://github.com/google/adk-python) —
-agent **tu quyet dinh** goi tool nao, chi doc dung phan du lieu can cho cau
-hoi. Xac nhan that qua bang `events` (ADK tu ghi): moi cau hoi deu co
-`functionCall` that, khong phai model bia so.
+**P9 đổi kiến trúc**: từ "RAG-lite" (nhồi sẵn toàn bộ ngữ cảnh vào prompt
+mỗi lượt hỏi) sang [Google ADK](https://github.com/google/adk-python) —
+agent **tự quyết định** gọi tool nào, chỉ đọc đúng phần dữ liệu cần cho câu
+hỏi. Xác nhận thật qua bảng `events` (ADK tự ghi): mọi câu hỏi đều có
+`functionCall` thật, không phải model bịa số.
 
 | | |
 |---|---|
-| Backend | `POST /api/agent/chat` — package [app/agent/](apps/api/app/agent/) (`root_agent.py` = SYSTEM_PROMPT + `Agent`, `tools.py` = 4 tool ADK, `queries.py` = logic SQL thuan test duoc rieng, `sql_gen.py` = NL -> SQL cho `get_fact`, `service.py` = Runner + Session), wire vao [main.py](apps/api/app/main.py) |
-| `get_fact` (NL -> SQL) | Nhan cau hoi tu do (vd "to chuc co chu wells o TX"), tu sinh **mot dieu kien WHERE** (khong phai ca cau lenh) qua Gemini, validate 4 lop (ngoac/nhay can bang dung THU TU, khong `;`/`--`/`/*`, khong goi ham la, khong tu khoa cau lenh), AND them dieu kien pham vi o tang SQL, thu toi da 3 lan (loi lan truoc dua lai vao lan sinh sau) — het luot van sai thi tra loi khong tra loi duoc, khong bia so. Xem [app/agent/sql_gen.py](apps/api/app/agent/sql_gen.py) |
-| Giao dien | Trang `/agent` — [app/agent/page.tsx](apps/web/app/agent/page.tsx) — gui `session_id` thay vi toan bo lich su moi lan hoi |
-| Session | `DatabaseSessionService` cua ADK, luu THANG tren Postgres dang co (`DATABASE_URL`, dialect `postgresql+psycopg://` — khong can driver moi). ADK tu tao 5 bang rieng (`sessions`, `events`, `app_states`, `user_states`, `adk_internal_metadata`) **ngoai Alembic** — day la cach ADK tu quan ly, khac voi moi bang khac trong repo nay |
-| Pham vi | Ep tai TANG TOOL: `service.chat()` gan `scope_states`/`unrestricted` vao session state LUC MO PHIEN (tu `authz.Principal`, khong tu LLM); `tools.py` chi doc lai tu do. LLM khong the "gia vo" goi tool voi scope khac |
-| Model | `gemini-2.5-flash` qua Vertex AI (bien `GOOGLE_GENAI_USE_VERTEXAI=TRUE` dat trong code luc import, khong can Terraform/docker-compose them) — khong dung API key, ADC nhu truoc |
-| Quyen GCP | Service account `dataops-api` co `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) (khong doi tu P7) |
-| Test | [test_agent.py](apps/api/tests/test_agent.py) — pham vi kiem THAT truc tiep tren `queries.py` (khong can mock ADK), endpoint mock `agent.chat()` de khong goi Vertex AI that trong CI |
+| Backend | `POST /api/agent/chat` — package [app/agent/](apps/api/app/agent/) (`root_agent.py` = SYSTEM_PROMPT + `Agent`, `tools.py` = 4 tool ADK, `queries.py` = logic SQL thuần test được riêng, `sql_gen.py` = NL -> SQL cho `get_fact`, `service.py` = Runner + Session), wire vào [main.py](apps/api/app/main.py) |
+| `get_fact` (NL -> SQL) | Nhận câu hỏi tự do (vd "tổ chức có chữ wells ở TX"), tự sinh **một điều kiện WHERE** (không phải cả câu lệnh) qua Gemini, validate 4 lớp (ngoặc/nháy cân bằng đúng THỨ TỰ, không `;`/`--`/`/*`, không gọi hàm lạ, không từ khóa câu lệnh), AND thêm điều kiện phạm vi ở tầng SQL, thử tối đa 3 lần (lỗi lần trước đưa lại vào lần sinh sau) — hết lượt vẫn sai thì trả lời không trả lời được, không bịa số. Xem [app/agent/sql_gen.py](apps/api/app/agent/sql_gen.py) |
+| Giao diện | Trang `/agent` — [app/agent/page.tsx](apps/web/app/agent/page.tsx) — gửi `session_id` thay vì toàn bộ lịch sử mỗi lần hỏi |
+| Session | `DatabaseSessionService` của ADK, lưu THẲNG trên Postgres đang có (`DATABASE_URL`, dialect `postgresql+psycopg://` — không cần driver mới). ADK tự tạo 5 bảng riêng (`sessions`, `events`, `app_states`, `user_states`, `adk_internal_metadata`) **ngoài Alembic** — đây là cách ADK tự quản lý, khác với mọi bảng khác trong repo này |
+| Phạm vi | Ép tại TẦNG TOOL: `service.chat()` gắn `scope_states`/`unrestricted` vào session state LÚC MỞ PHIÊN (từ `authz.Principal`, không từ LLM); `tools.py` chỉ đọc lại từ đó. LLM không thể "giả vờ" gọi tool với scope khác |
+| Model | `gemini-2.5-flash` qua Vertex AI (biến `GOOGLE_GENAI_USE_VERTEXAI=TRUE` đặt trong code lúc import, không cần Terraform/docker-compose thêm) — không dùng API key, ADC như trước |
+| Quyền GCP | Service account `dataops-api` có `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) (không đổi từ P7) |
+| Test | [test_agent.py](apps/api/tests/test_agent.py) — phạm vi kiểm THẬT trực tiếp trên `queries.py` (không cần mock ADK), endpoint mock `agent.chat()` để không gọi Vertex AI thật trong CI |
 
-**Truoc khi dung**: bat API `aiplatform.googleapis.com` cho project (repo
-nay khong co resource Terraform tu bat API — cac API duoc bat tay tu P1,
-xem [Ha tang da dung (P1)](#ha-tang-da-dung-p1)):
+**Trước khi dùng**: bật API `aiplatform.googleapis.com` cho project (repo
+này không có resource Terraform tự bật API — các API được bật tay từ P1,
+xem [Hạ tầng đã dựng (P1)](#hạ-tầng-đã-dựng-p1)):
 
 ```bash
 gcloud services enable aiplatform.googleapis.com --project=dataops-poc-2026
-cd infra && terraform apply   # cap them role aiplatform.user cho dataops-api
+cd infra && terraform apply   # cấp thêm role aiplatform.user cho dataops-api
 ```
 
-## Day qc_exception len BigQuery (P7, mirror mot chieu)
+## Đẩy qc_exception lên BigQuery (P7, mirror một chiều)
 
-Khach hang muon xem vi pham QC tren BigQuery de lam bao cao/BI, nhung ung
-dung VAN doc/ghi qua Postgres nhu truoc — khong doi duong doc de tiet kiem
-chi phi query BigQuery. Day la **mot chieu duy nhat**: sau moi lan QC quet
-xong (`jobs/qc/main.py`), toan bo bang `qc_exception` duoc **thay the
-nguyen khoi** (`WRITE_TRUNCATE`) vao `dataops_analytics.qc_exception` tren
-BigQuery — anh chup luon khop voi Postgres, khong tu tich luy lich su
-rieng (Postgres da giu du lich su vi no khong xoa vi pham cua `run_id` cu).
+Khách hàng muốn xem vi phạm QC trên BigQuery để làm báo cáo/BI, nhưng ứng
+dụng VẪN đọc/ghi qua Postgres như trước — không đổi đường đọc để tiết kiệm
+chi phí query BigQuery. Đây là **một chiều duy nhất**: sau mỗi lần QC quét
+xong (`jobs/qc/main.py`), toàn bộ bảng `qc_exception` được **thay thế
+nguyên khối** (`WRITE_TRUNCATE`) vào `dataops_analytics.qc_exception` trên
+BigQuery — ảnh chụp luôn khớp với Postgres, không tự tích lũy lịch sử
+riêng (Postgres đã giữ đủ lịch sử vì nó không xóa vi phạm của `run_id` cũ).
 
 | | |
 |---|---|
-| Code | `mirror_qc_exception_to_bigquery` trong [jobs/qc/main.py](jobs/qc/main.py), goi o cuoi `main()` |
-| Bat/tat | Bien `MIRROR_QC_TO_BIGQUERY=1` (mac dinh tat — job chay local/test khong can BigQuery) |
-| Dataset dich | `dataops_analytics` (rieng voi `dataops_src` — dataset do la "team Data ghi, ung dung chi doc", khong the ghi vao) |
-| Ha tang | `google_bigquery_dataset "analytics"` + IAM `bigquery.dataEditor` cho SA `jobs` — [infra/modules/data/main.tf](infra/modules/data/main.tf) |
-| Test | 2 test thuan (khong can BigQuery that) trong [jobs/tests/test_qc.py](jobs/tests/test_qc.py) — chuyen datetime sang ISO, giu nguyen `observed` (JSON) |
+| Code | `mirror_qc_exception_to_bigquery` trong [jobs/qc/main.py](jobs/qc/main.py), gọi ở cuối `main()` |
+| Bật/tắt | Biến `MIRROR_QC_TO_BIGQUERY=1` (mặc định tắt — job chạy local/test không cần BigQuery) |
+| Dataset đích | `dataops_analytics` (riêng với `dataops_src` — dataset đó là "team Data ghi, ứng dụng chỉ đọc", không thể ghi vào) |
+| Hạ tầng | `google_bigquery_dataset "analytics"` + IAM `bigquery.dataEditor` cho SA `jobs` — [infra/modules/data/main.tf](infra/modules/data/main.tf) |
+| Test | 2 test thuần (không cần BigQuery thật) trong [jobs/tests/test_qc.py](jobs/tests/test_qc.py) — chuyển datetime sang ISO, giữ nguyên `observed` (JSON) |
 
-Loi day len BigQuery **khong lam hong lan chay QC**: du lieu that (Postgres)
-da ghi xong truoc do, job chi log ro va lan chay sau se day lai ban moi.
+Lỗi đẩy lên BigQuery **không làm hỏng lần chạy QC**: dữ liệu thật (Postgres)
+đã ghi xong trước đó, job chỉ log rõ và lần chạy sau sẽ đẩy lại bản mới.
 
 ```bash
-# Test tay: day 1 lan thu cong
+# Test tay: đẩy 1 lần thủ công
 MIRROR_QC_TO_BIGQUERY=1 GCP_PROJECT_ID=dataops-poc-2026 \
   FORCE_QC=1 RULES_PATH=$PWD/rules/rules.yaml python jobs/qc/main.py
 ```
 
-## Doi dataset sang FDIC Summary of Deposits (P8)
+## Đổi dataset sang FDIC Summary of Deposits (P8)
 
-Theo dung dataset `Demo_Build_Spec.md` mo ta tu dau (`year, state,
+Theo đúng dataset `Demo_Build_Spec.md` mô tả từ đầu (`year, state,
 institution, deposit`), thay cho `usa_names` (`year, state, gender, name,
-number`) — chi tiet nguon/cot moi xem muc [Du lieu (P2, doi nguon o
-P8)](#du-lieu-p2-doi-nguon-o-p8).
+number`) — chi tiết nguồn/cột mới xem mục [Dữ liệu (P2, đổi nguồn ở
+P8)](#dữ-liệu-p2-đổi-nguồn-ở-p8).
 
-**Day la doi mien du lieu, khong phai doi ten cot** — `fact_current`,
-`qc_exception`, `ticket` bi DROP va tao lai; du lieu cu (ten khai sinh)
-khong con y nghia trong mien moi nen khong migrate. Khoa tu nhien rut tu
-**bon phan xuong ba**: `(year, state, institution_id)` — FDIC khong co
-truc tuong duong "gioi tinh" nen bi bo han, khong thay the.
+**Đây là đổi miền dữ liệu, không phải đổi tên cột** — `fact_current`,
+`qc_exception`, `ticket` bị DROP và tạo lại; dữ liệu cũ (tên khai sinh)
+không còn ý nghĩa trong miền mới nên không migrate. Khóa tự nhiên rút từ
+**bốn phần xuống ba**: `(year, state, institution_id)` — FDIC không có
+trục tương đương "giới tính" nên bị bỏ hẳn, không thay thế.
 
 | | |
 |---|---|
-| Migration | `apps/api/alembic/versions/e91a2c5f7b14_p8_doi_dataset_sang_fdic_sod.py` — drop + tao lai 3 bang |
+| Migration | `apps/api/alembic/versions/e91a2c5f7b14_p8_doi_dataset_sang_fdic_sod.py` — drop + tạo lại 3 bảng |
 | Model | `FactCurrent` / `QcException` / `Ticket` trong [apps/api/app/models.py](apps/api/app/models.py) |
-| Bo luat | `rules/rules.yaml` version 6 — viet lai ca 5 luat; `duoi_nguong_kiem_duyet` (nguong cong bo cua SSA, khong ap dung cho FDIC) doi thanh `deposit_negative_or_zero` (deposit <= 0); them moi `deposit_share_formula_mismatch` — kiem TUNG dong deposit_share dung cong thuc, khong chi kiem tong ca nhom. Ten luat/message/khoa trong `observed` deu bang tieng Anh (P9) — day la phan bo luat duy nhat AI Agent doc va tra loi thang lai cho nguoi dung |
-| Seed | `jobs/seed/main.py` — xem muc [Seed Job (P8)](#seed-job-p8) |
-| Endpoint doi tham so | `/api/facts`, `/api/exceptions`, `/api/summary`: `gender`/`name` -> `institution`; `/api/tickets` nhan `institution_id` (khong con `gender`/`name`) |
-| Giao dien | Thanh loc bo o "Phan khuc" (gioi tinh), o "Ten" doi thanh "To chuc"; luoi du lieu doi cot `Gioi/Ten` -> `To chuc`, `So tre` -> `Deposit` |
+| Bộ luật | `rules/rules.yaml` version 6 — viết lại cả 5 luật; `duoi_nguong_kiem_duyet` (ngưỡng công bố của SSA, không áp dụng cho FDIC) đổi thành `deposit_negative_or_zero` (deposit <= 0); thêm mới `deposit_share_formula_mismatch` — kiểm TỪNG dòng deposit_share đúng công thức, không chỉ kiểm tổng cả nhóm. Tên luật/message/khóa trong `observed` đều bằng tiếng Anh (P9) — đây là phần bộ luật duy nhất AI Agent đọc và trả lời thẳng lại cho người dùng |
+| Seed | `jobs/seed/main.py` — xem mục [Seed Job (P8)](#seed-job-p8) |
+| Endpoint đổi tham số | `/api/facts`, `/api/exceptions`, `/api/summary`: `gender`/`name` -> `institution`; `/api/tickets` nhận `institution_id` (không còn `gender`/`name`) |
+| Giao diện | Thanh lọc bỏ ô "Phân khúc" (giới tính), ô "Tên" đổi thành "Tổ chức"; lưới dữ liệu đổi cột `Giới/Tên` -> `Tổ chức`, `Số trẻ` -> `Deposit` |
 
-`institution_id` (CERT cua FDIC) la ID on dinh; `institution` (ten hien
-thi) KHONG nam trong khoa vi FDIC ghi ten khong nhat quan cach viet
-hoa/thuong giua cac nam (du lieu that: "Keybank" nam 2022 vs "KeyBank" tu
-2023, cung mot CERT) — dung ten lam khoa se tach nham mot to chuc thanh
+`institution_id` (CERT của FDIC) là ID ổn định; `institution` (tên hiển
+thị) KHÔNG nằm trong khóa vì FDIC ghi tên không nhất quán cách viết
+hoa/thường giữa các năm (dữ liệu thật: "Keybank" năm 2022 vs "KeyBank" từ
+2023, cùng một CERT) — dùng tên làm khóa sẽ tách nhầm một tổ chức thành
 hai.
 
-Da chay tron tren du lieu that (khong mock): seed 5 nam FDIC (2022-2026,
-385.625 dong chi nhanh -> gop con 31.502 dong to chuc) vao `dataops_src`,
-sync ve Postgres, QC bat **634 vi pham that** (509 `deposit_negative_or_zero`,
-29 `deposit_spike`, 96 `unusual_deposit_change`), AI Agent tra loi dung theo
-schema moi, 40 test API + 18 test jobs deu qua.
+Đã chạy trọn trên dữ liệu thật (không mock): seed 5 năm FDIC (2022-2026,
+385.625 dòng chi nhánh -> gộp còn 31.502 dòng tổ chức) vào `dataops_src`,
+sync về Postgres, QC bắt **634 vi phạm thật** (509 `deposit_negative_or_zero`,
+29 `deposit_spike`, 96 `unusual_deposit_change`), AI Agent trả lời đúng theo
+schema mới, 40 test API + 18 test jobs đều qua.
 
 ## Terraform
 
@@ -739,59 +739,59 @@ schema moi, 40 test API + 18 test jobs deu qua.
 cd infra && terraform init && terraform plan
 ```
 
-Bien quan trong trong `terraform.tfvars`:
+Biến quan trọng trong `terraform.tfvars`:
 
-| Bien | Y nghia |
+| Biến | Ý nghĩa |
 |---|---|
-| `iap_enabled` | `false` cho toi khi co OAuth client |
-| `github_repo` | de trong thi bo qua toan bo CI/CD |
-| `iap_members` | ai duoc mo ung dung |
+| `iap_enabled` | `false` cho tới khi có OAuth client |
+| `github_repo` | để trống thì bỏ qua toàn bộ CI/CD |
+| `iap_members` | ai được mở ứng dụng |
 
-## Con no ky thuat
+## Còn nợ kỹ thuật
 
-### ⚠️ VAN CHUA DONG — web dang mo public
+### ⚠️ VẪN CHƯA ĐÓNG — web đang mở public
 
-`infra/terraform.tfvars` dang dat `public_access = true`. Bat cu ai co link
-deu xem duoc https://dataops-dev.3ddesigns.xyz — KHONG can dang nhap.
+`infra/terraform.tfvars` đang đặt `public_access = true`. Bất cứ ai có link
+đều xem được https://dataops-dev.3ddesigns.xyz — KHÔNG cần đăng nhập.
 
-Ly do: IAP chua bat duoc (project khong thuoc Organization), ma khong co
-IAP thi trinh duyet khong co cach nao dang nhap, moi request deu 403.
-Mo tam de xem va demo.
+Lý do: IAP chưa bật được (project không thuộc Organization), mà không có
+IAP thì trình duyệt không có cách nào đăng nhập, mọi request đều 403.
+Mở tạm để xem và demo.
 
-Ly do mo tam da het hieu luc tu P2: trang khong con la ba dong trang thai
-nua ma la 1,2 trieu dong du lieu that, kem danh tinh gia lap qua
-`X-Dev-User`. Day la mon no nang nhat con lai cua ca du an.
+Lý do mở tạm đã hết hiệu lực từ P2: trang không còn là ba dòng trạng thái
+nữa mà là 1,2 triệu dòng dữ liệu thật, kèm danh tính giả lập qua
+`X-Dev-User`. Đây là món nợ nặng nhất còn lại của cả dự án.
 
 ```bash
 # trong infra/terraform.tfvars: public_access = false
 cd infra && terraform apply
 ```
 
-Kiem chung da dong:
+Kiểm chứng đã đóng:
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://dataops-dev.3ddesigns.xyz
-# phai tra ve 403
+# phải trả về 403
 ```
 
-Chi WEB duoc mo. API van dong kin, chi `dataops-web` goi duoc bang OIDC token.
+Chỉ WEB được mở. API vẫn đóng kín, chỉ `dataops-web` gọi được bằng OIDC token.
 
-Cach go tan goc: dang ky Cloud Identity Free cho `3ddesigns.xyz` -> project
-co Organization -> IAP tu cap OAuth client -> bo duoc `public_access` han.
+Cách gỡ tận gốc: đăng ký Cloud Identity Free cho `3ddesigns.xyz` -> project
+có Organization -> IAP tự cấp OAuth client -> bỏ được `public_access` hẳn.
 
-### Cac mon khac
+### Các món khác
 
-- ~~Service account tao bang gcloud~~ — P5 da khai bao trong `module.iam`.
-  Con lai mot lan `./scripts/import-existing.sh` truoc khi apply.
-- `secretmanager.secretAccessor` van con o CA HAI noi: cap project (tu P0)
-  va cap secret (P1). Terraform chi cap o cap secret; go cai cap project
-  la lenh `gcloud` co trong runbook, muc "Go quyen thua".
-- Pipeline: job `deploy-staging` va `deploy-prod` deploy vao CUNG service,
-  cung domain. `gcloud run deploy` cho revision moi 100% traffic ngay, nen
-  buoc duyet tay o `deploy-prod` khong con y nghia — code da live tu truoc.
-  Sua bang `--no-traffic --tag=staging` khi can tach that.
-- ~~Quy trinh chat luong khong khep vong~~ — P6 da go: bo `fact_override`,
-  them ticket co dieu kien nghiem thu, ban ky ghi ro mon no. Con lai hai
-  mon nho, ghi o cuoi [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md):
-  bo luat khong tu lon len sau moi ticket kieu "QC khong bat duoc", va ticket
-  van phai bao cho team Data bang tay.
+- ~~Service account tạo bằng gcloud~~ — P5 đã khai báo trong `module.iam`.
+  Còn lại một lần `./scripts/import-existing.sh` trước khi apply.
+- `secretmanager.secretAccessor` vẫn còn ở CẢ HAI nơi: cấp project (từ P0)
+  và cấp secret (P1). Terraform chỉ cấp ở cấp secret; gỡ cái cấp project
+  là lệnh `gcloud` có trong runbook, mục "Gỡ quyền thừa".
+- Pipeline: job `deploy-staging` và `deploy-prod` deploy vào CÙNG service,
+  cùng domain. `gcloud run deploy` cho revision mới 100% traffic ngay, nên
+  bước duyệt tay ở `deploy-prod` không còn ý nghĩa — code đã live từ trước.
+  Sửa bằng `--no-traffic --tag=staging` khi cần tách thật.
+- ~~Quy trình chất lượng không khép vòng~~ — P6 đã gỡ: bỏ `fact_override`,
+  thêm ticket có điều kiện nghiệm thu, bản ký ghi rõ món nợ. Còn lại hai
+  món nhỏ, ghi ở cuối [docs/quy-trinh-chat-luong.md](docs/quy-trinh-chat-luong.md):
+  bộ luật không tự lớn lên sau mỗi ticket kiểu "QC không bắt được", và ticket
+  vẫn phải báo cho team Data bằng tay.
