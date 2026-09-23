@@ -1,11 +1,11 @@
 "use client";
 
-// Do tuoi du lieu + hai nut de nham la phien phuc.
+// Do tuoi du lieu + nut "Lam moi bang".
 //
-// "Lam moi bang" doc lai ban sao Postgres — vai chuc mili giay, khong
-// cham BigQuery. "Nap lai tu nguon" chay han Sync Job: doc lai BigQuery,
-// dung bang staging, doi ten. Hai viec khac han nhau nen hai nut khac han
-// nhau ve mau, chu va mot buoc hoi lai.
+// "Lam moi bang" chay han Sync Job: doc lai BigQuery, dung bang staging,
+// doi ten. Ton 30–60 giay va chi team lead / admin moi thay, nen co mot
+// buoc hoi lai truoc khi goi. Banner "co lan nap moi" van co nut Tai lai
+// rieng — cai do chi doc lai ban sao Postgres, khong cham BigQuery.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -64,9 +64,6 @@ export default function StatusStrip() {
 
         <span style={{ flex: 1 }} />
 
-        <button className="btn btn-sm" onClick={refreshView} title={t("strip.refreshTitle")}>
-          {t("strip.refresh")}
-        </button>
         {canRebuild ? (
           <button
             className="btn btn-sm btn-danger"
@@ -98,7 +95,7 @@ export default function StatusStrip() {
       {asking ? (
         <Modal title={t("strip.confirmTitle")} onClose={() => setAsking(false)}>
           <p className="sub" style={{ marginBottom: 12 }}>
-            {tn("strip.confirmBody", { notLike: <b>{t("strip.confirmNotLike")}</b> })}
+            {t("strip.confirmBody")}
           </p>
           <ErrBox error={rebuild.error} />
           <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
