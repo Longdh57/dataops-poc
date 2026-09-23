@@ -181,6 +181,19 @@ GCP_PROJECT_ID=dataops-poc-2026 SEED_BIGQUERY=1 SEED_YEAR_COUNT=5 \
 Đã chạy thật: 5 năm (2022–2026) → 385.625 dòng chi nhánh → gộp còn
 **31.502 dòng** tổ chức.
 
+Them `SEED_FAKE_VIOLATIONS=1` neu can demo QC co du vi du cho ca 6 luat
+trong `rules.yaml`: du lieu FDIC that gan nhu khong bao gio tu vi pham
+`deposit_share_sum_not_100`, `deposit_share_formula_mismatch` (cong thuc
+tinh dung tu dau) hay `institution_reappeared_after_gap` (5 nam seed qua
+ngan de co khoang trong that > 3 nam) — co nay pha 4 dong that thanh du
+lieu gia de dam bao 3 luat do co it nhat 1 exception. 3 luat con lai da
+tu nhien co vi pham tren du lieu that nen khong dung.
+
+```bash
+GCP_PROJECT_ID=dataops-poc-2026 SEED_BIGQUERY=1 SEED_YEAR_COUNT=5 \
+  SEED_FAKE_VIOLATIONS=1 python jobs/seed/main.py
+```
+
 ### Sync Job
 
 ```
