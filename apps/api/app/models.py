@@ -210,8 +210,18 @@ class SignedVersion(Base):
     # Phieu duyet: vi sao van ky du con vi pham. Bat buoc khi co no.
     approval_note: Mapped[str | None] = mapped_column(Text)
 
+    # Table id day du cua snapshot BigQuery chup luc ky
+    # (`<project>.<dataset ky>.snapshot_<epoch signed_at>`). Export CHI doc
+    # tu day, khong doc bang fact dang song. NULL = ky truoc khi co
+    # snapshot, khong xuat file duoc. Xem docs/thiet-ke-ky-du-lieu.md.
+    bq_snapshot: Mapped[str | None] = mapped_column(String(1024))
+
     signed_by: Mapped[str] = mapped_column(String(320), nullable=False)
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("bq_snapshot", name="uq_signed_version_bq_snapshot"),
+    )
 
 
 class VersionsSent(Base):

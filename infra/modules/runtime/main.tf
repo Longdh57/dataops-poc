@@ -101,6 +101,17 @@ resource "google_cloud_run_v2_service" "api" {
         value = google_cloud_run_v2_job.qc.name
       }
 
+      # P11: ky = chup bang fact nguon thanh snapshot trong dataset rieng.
+      env {
+        name  = "BIGQUERY_DATASET"
+        value = var.bq_dataset
+      }
+
+      env {
+        name  = "BIGQUERY_SIGNED_DATASET"
+        value = var.bq_signed_dataset
+      }
+
       # Phai di cung iap_enabled: bat REQUIRE_IAP khi IAP chua bat thi
       # moi request deu 401 vi khong co assertion nao ca.
       env {

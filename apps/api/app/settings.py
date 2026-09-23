@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     gcp_project_id: str = ""
     project_number: str = ""
     bigquery_dataset: str = "dataops_src"
+    # Bang fact nguon — team Data ghi, ung dung chi doc.
+    bigquery_table: str = "fact_names"
+    # Dataset RIENG chua snapshot cua moi ban ky (xem docs/thiet-ke-ky-du-lieu.md).
+    # Tach khoi dataset nguon: ung dung ghi duoc o day, team Data thi khong.
+    bigquery_signed_dataset: str = "dataops_signed"
     staging_bucket: str = ""
     region: str = "asia-southeast1"
     # Cloud Run Job ma nut "Refresh table" kich hoat

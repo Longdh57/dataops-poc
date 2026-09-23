@@ -20,14 +20,18 @@ moi file deu co mot file `.ban-ky.txt` di kem (voi xlsx thi them mot sheet
 bia). CSV khong cho nhet dong chu thich vao giua du lieu ma khong lam hong
 file, nen dau phai nam rieng.
 
-Doc THANG BigQuery chu khong qua ban sao Postgres: so gui khach phai den
-tu nguon su that, khong phu thuoc Sync Job co tre hay khong.
+Doc BigQuery chu khong qua ban sao Postgres, nhung KHONG doc bang fact
+dang song: doc tu table snapshot chup luc ky (`signed_version.bq_snapshot`,
+tu P11). Team Data sua so tai cho sau khi ky thi bang song doi, snapshot
+thi khong — file gui khach luon la dung so da duoc duyet. Ban ky khong co
+snapshot thi tu choi, khong lui ve bang song. Xem docs/thiet-ke-ky-du-lieu.md.
 """
 
 from __future__ import annotations
 
 import csv
 import os
+import re
 import sys
 import tempfile
 
@@ -35,8 +39,6 @@ import psycopg
 from google.cloud import bigquery, storage
 
 PROJECT = os.getenv("GCP_PROJECT_ID", "dataops-poc-2026")
-DATASET = os.getenv("BQ_DATASET", "dataops_src")
-TABLE = os.getenv("BQ_TABLE", "fact_names")
 BUCKET = os.getenv("STAGING_BUCKET", f"{PROJECT}-staging")
 LOCATION = os.getenv("BQ_LOCATION", "asia-southeast1")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dataops:dataops@localhost:5432/dataops")
@@ -64,7 +66,7 @@ def pending_jobs(conn) -> list[dict]:
                          e.signed_version_id, v.label, v.source_run_ids, v.run_id,
                          v.checksum, v.violations, v.violations_fingerprint,
                          v.rules_version, v.open_tickets, v.approval_note,
-                         v.signed_by, v.signed_at
+                         v.signed_by, v.signed_at, v.bq_snapshot
                   FROM export_job e
                   LEFT JOIN signed_version v ON v.id = e.signed_version_id
                   WHERE e.status = 'pending'"""
@@ -92,8 +94,27 @@ def blocking_tickets(conn) -> list[tuple]:
 
 # --------------------------------------------------------------- doc BQ
 
-def fetch_rows(bq: bigquery.Client, run_ids: list[str], states: list[str] | None):
-    """Doc BigQuery theo dung ban ky va dung pham vi.
+def snapshot_table(job: dict) -> str:
+    """Table id cua snapshot ban ky — nguon DUY NHAT cua file.
+
+    Kiem ca dang ten: gia tri nay ghep thang vao FROM, nen chi chap nhan
+    `project.dataset.snapshot_<so>` dung nhu API da ghi.
+    """
+    t = job.get("bq_snapshot")
+    if not t:
+        raise RuntimeError(f"ban ky '{job['label']}' khong co snapshot BigQuery — "
+                           "ky lai truoc khi xuat file")
+    if not re.fullmatch(r"[a-z0-9-]+\.[A-Za-z0-9_]+\.snapshot_\d+", t):
+        raise RuntimeError(f"ten snapshot khong hop le: {t!r}")
+    return t
+
+
+def fetch_rows(bq: bigquery.Client, table: str, run_ids: list[str],
+               states: list[str] | None):
+    """Doc snapshot ban ky theo dung lan nap va dung pham vi.
+
+    Snapshot la ban chup CA bang fact luc ky, nen van phai loc run_id: bang
+    luc do co the da chua lan nap chua ai duyet.
 
     ORDER BY dat state, year len truoc co hai tac dung: file doc de, va
     cac dong cung mot nhom thi phan nam lien nhau — nho do tinh lai thi
@@ -107,7 +128,7 @@ def fetch_rows(bq: bigquery.Client, run_ids: list[str], states: list[str] | None
 
     sql = f"""
         SELECT year, state, institution_id, institution, deposit, deposit_share
-        FROM `{PROJECT}.{DATASET}.{TABLE}`
+        FROM `{table}`
         WHERE {' AND '.join(where)}
         ORDER BY state, year, deposit DESC
     """
@@ -146,6 +167,7 @@ def stamp_lines(job: dict, states: list[str] | None, n_rows: int) -> list[str]:
         f"Ky luc          : {ky_luc.isoformat() if ky_luc else '-'}",
         f"Lan nap du lieu : {', '.join(job['source_run_ids'])}",
         f"Van tay du lieu : {job.get('checksum') or '(khong ghi)'}",
+        f"Snapshot du lieu: {job.get('bq_snapshot') or '-'}",
         f"Bo luat QC      : version {job.get('rules_version') or '-'}",
         f"Pham vi file    : {', '.join(states) if states else 'tat ca cac bang'}",
         f"So dong         : {n_rows:,}",
@@ -170,8 +192,8 @@ def stamp_lines(job: dict, states: list[str] | None, n_rows: int) -> list[str]:
         for dong in str(job["approval_note"]).splitlines():
             lines.append(f"  {dong}")
     lines.append("")
-    lines.append("So trong file la so cua BigQuery tai cac lan nap ke tren.")
-    lines.append("Ung dung khong sua so, nen file nay va nguon luon khop nhau.")
+    lines.append("So trong file doc tu snapshot BigQuery chup DUNG LUC KY, tai cac lan nap")
+    lines.append("ke tren. Ung dung khong sua so, va nguon sua sau khi ky cung khong lam doi file.")
     return lines
 
 
@@ -255,7 +277,9 @@ def process(conn, bq, bucket, job: dict) -> None:
     log(f"  job {jid}: ban ky '{job['label']}' · {len(job['source_run_ids'])} lan nap "
         f"· pham vi {states or 'tat ca'} · {fmt}")
 
-    rows = to_rows(fetch_rows(bq, job["source_run_ids"], states))
+    table = snapshot_table(job)
+    log(f"  job {jid}: doc tu snapshot {table}")
+    rows = to_rows(fetch_rows(bq, table, job["source_run_ids"], states))
     suffix = ".xlsx" if fmt == "xlsx" else ".csv"
 
     # Dau duoc dung TRUOC khi ghi, nhung so dong thi chi biet sau khi ghi

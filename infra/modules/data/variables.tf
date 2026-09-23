@@ -17,3 +17,18 @@ variable "analytics_writers" {
   type        = list(string)
   default     = []
 }
+variable "signed_dataset_id" {
+  description = "Dataset rieng chua snapshot moi ban ky (P11)"
+  type        = string
+  default     = "dataops_signed"
+}
+variable "signed_writers" {
+  description = "Service account duoc TAO snapshot ban ky (API)"
+  type        = list(string)
+  default     = []
+}
+variable "signed_readers" {
+  description = "Service account duoc DOC snapshot ban ky (Export Job)"
+  type        = list(string)
+  default     = []
+}

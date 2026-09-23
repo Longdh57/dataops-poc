@@ -64,6 +64,11 @@ variable "bq_dataset" {
   type    = string
   default = "dataops_src"
 }
+variable "bq_signed_dataset" {
+  description = "Dataset chua snapshot ban ky — API ghi luc ky (P11)"
+  type        = string
+  default     = "dataops_signed"
+}
 variable "bq_analytics_dataset" {
   description = "Dataset QC Job day ban sao qc_exception vao (P7)"
   type        = string

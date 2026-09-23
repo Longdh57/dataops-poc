@@ -22,7 +22,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import agent, rules as rules_file
+from . import agent, bq_snapshot, rules as rules_file
 from .auth import caller_email
 from .authz import Principal, load_principal, scope_clause
 from .db import db
@@ -851,6 +851,11 @@ def release(body: ReleaseBody, p: Me) -> dict:
       co ten nguoi, co ly do.
     - QC chua kiem lan nap hien tai: danh sach vi pham dang hien la cua
       lan nap truoc. Ky luc nay la ky mot thu minh chua nhin thay.
+
+    Ky xong thi DU LIEU cung bi dong bang: bang fact tren BigQuery duoc
+    chup thanh `snapshot_<epoch>` va ten bang ghi vao signed_version.
+    Export chi doc tu snapshot do. BigQuery lech voi ban QC da kiem thi
+    tu choi ky — xem app/bq_snapshot.py va docs/thiet-ke-ky-du-lieu.md.
     """
     p.require("team_lead", "admin")
 
@@ -905,34 +910,52 @@ def release(body: ReleaseBody, p: Me) -> dict:
 
             checksum = data_checksum(cur, st.get("source_run_ids"))
 
+            # Dong bang DU LIEU truoc khi ghi ban ky. Thoi diem ky lam tron
+            # ve giay vi ten snapshot la epoch giay — signed_at va ten bang
+            # phai chi cung mot khoanh khac.
+            signed_at = datetime.now(timezone.utc).replace(microsecond=0)
+            try:
+                snapshot = bq_snapshot.freeze(signed_at, st.get("source_run_ids") or [],
+                                              checksum, body.label, p.email)
+            except bq_snapshot.SnapshotError as exc:
+                raise HTTPException(exc.status, exc.detail)
+
             # Dong bang danh sach lan nap du lieu. Thieu no thi Export Job
             # khong biet ban ky nay gom nhung gi, va se xuat ca nhung lan
             # nap den sau khi ky.
-            cur.execute(
-                """INSERT INTO signed_version
-                       (run_id, source_run_ids, label, row_count, checksum,
-                        violations, violations_fingerprint, rules_version,
-                        open_tickets, approval_note, signed_by)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                   RETURNING id, signed_at""",
-                (st["last_run_id"], json.dumps(st.get("source_run_ids")),
-                 body.label, st["last_row_count"], checksum,
-                 json.dumps({r["rule_id"]: r["n"] for r in v["by_rule"]}),
-                 v["fingerprint"], st.get("rules_version"),
-                 json.dumps([t["id"] for t in con_no]), note or None, p.email))
-            sv = cur.fetchone()
-            audit(cur, p.email, "release", "signed_version", str(sv["id"]), None,
-                  {"run_id": st["last_run_id"], "label": body.label,
-                   "source_run_ids": st.get("source_run_ids"), "checksum": checksum,
-                   "so_vi_pham": v["total"], "van_tay_vi_pham": v["fingerprint"],
-                   "rules_version": st.get("rules_version"),
-                   "ticket_chua_dong": [t["id"] for t in con_no],
-                   "phieu_duyet": note or None})
-        conn.commit()
+            try:
+                cur.execute(
+                    """INSERT INTO signed_version
+                           (run_id, source_run_ids, label, row_count, checksum,
+                            violations, violations_fingerprint, rules_version,
+                            open_tickets, approval_note, signed_by, signed_at,
+                            bq_snapshot)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                       RETURNING id, signed_at""",
+                    (st["last_run_id"], json.dumps(st.get("source_run_ids")),
+                     body.label, st["last_row_count"], checksum,
+                     json.dumps({r["rule_id"]: r["n"] for r in v["by_rule"]}),
+                     v["fingerprint"], st.get("rules_version"),
+                     json.dumps([t["id"] for t in con_no]), note or None, p.email,
+                     signed_at, snapshot))
+                sv = cur.fetchone()
+                audit(cur, p.email, "release", "signed_version", str(sv["id"]), None,
+                      {"run_id": st["last_run_id"], "label": body.label,
+                       "source_run_ids": st.get("source_run_ids"), "checksum": checksum,
+                       "bq_snapshot": snapshot,
+                       "so_vi_pham": v["total"], "van_tay_vi_pham": v["fingerprint"],
+                       "rules_version": st.get("rules_version"),
+                       "ticket_chua_dong": [t["id"] for t in con_no],
+                       "phieu_duyet": note or None})
+                conn.commit()
+            except Exception:
+                # Ban ky khong ghi duoc thi snapshot thanh mo coi — xoa di.
+                bq_snapshot.drop(snapshot)
+                raise
 
     return {"id": sv["id"], "run_id": st["last_run_id"], "label": body.label,
             "row_count": st["last_row_count"], "source_run_ids": st.get("source_run_ids"),
-            "checksum": checksum, "violations": v["by_rule"],
+            "checksum": checksum, "bq_snapshot": snapshot, "violations": v["by_rule"],
             "violations_fingerprint": v["fingerprint"],
             "rules_version": st.get("rules_version"),
             "open_tickets": [t["id"] for t in con_no],
@@ -1003,7 +1026,7 @@ def create_export(body: ExportBody, p: Me) -> dict:
             require_gate_open(cur)
 
             # File gui khach CHI duoc xuat tu ban da ky.
-            cur.execute("""SELECT id, run_id, label, source_run_ids
+            cur.execute("""SELECT id, run_id, label, source_run_ids, bq_snapshot
                            FROM signed_version ORDER BY id DESC LIMIT 1""")
             sv = cur.fetchone()
             if not sv:
@@ -1013,6 +1036,13 @@ def create_export(body: ExportBody, p: Me) -> dict:
                     409,
                     f"ban ky '{sv['label']}' khong ghi lai duoc nhung lan nap nao nam trong do; "
                     "chay lai Sync Job roi ky lai truoc khi xuat file")
+            # Ban ky truoc khi co snapshot: du lieu cua no khong con duoc
+            # dong bang o dau ca. Xuat tu bang song la xuat so chua ai duyet.
+            if not sv["bq_snapshot"]:
+                raise HTTPException(
+                    409,
+                    f"ban ky '{sv['label']}' khong co snapshot BigQuery — ky lai de dong bang "
+                    "du lieu truoc khi xuat file")
 
             scope = None if p.unrestricted else sorted(p.scope_states)
             cur.execute(
@@ -1256,7 +1286,7 @@ def versions(p: Me, limit: int = Query(50, ge=1, le=200)) -> dict:
         cur.execute("""SELECT id, run_id, label, row_count, signed_by, signed_at,
                               source_run_ids, checksum, violations,
                               violations_fingerprint, rules_version,
-                              open_tickets, approval_note
+                              open_tickets, approval_note, bq_snapshot
                        FROM signed_version ORDER BY id DESC LIMIT %s""", (limit,))
         rows = cur.fetchall()
         if rows:

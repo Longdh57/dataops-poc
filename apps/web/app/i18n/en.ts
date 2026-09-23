@@ -364,6 +364,8 @@ export const en: Record<MessageKey, string> = {
   "ver.col.at": "At",
   "ver.col.sentTo": "Sent to",
   "ver.fingerprint": "fingerprint {hash}",
+  "ver.snapshot": "snapshot {name}",
+  "ver.noSnapshot": "no snapshot — cannot export",
   "ver.noFingerprint": "no fingerprint — signed before P6",
   "ver.sourceRuns": "{n} data load||{n} data loads",
   "ver.noSourceRuns": "no loads recorded — cannot be exported",

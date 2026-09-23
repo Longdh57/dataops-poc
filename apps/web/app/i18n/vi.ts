@@ -368,6 +368,8 @@ export const vi = {
   "ver.col.at": "Lúc",
   "ver.col.sentTo": "Đã gửi cho",
   "ver.fingerprint": "vân tay {hash}",
+  "ver.snapshot": "snapshot {name}",
+  "ver.noSnapshot": "không có snapshot — không xuất file được",
   "ver.noFingerprint": "không có vân tay — ký trước P6",
   "ver.sourceRuns": "{n} lần nạp dữ liệu",
   "ver.noSourceRuns": "không ghi lại lần nạp — không xuất file được",

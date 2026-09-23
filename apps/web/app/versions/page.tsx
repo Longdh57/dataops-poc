@@ -193,6 +193,11 @@ export default function VersionsPage() {
                         {t("ver.noFingerprint")}
                       </div>
                     )}
+                    <div className="tone-muted mono" style={{ fontSize: 10.5, fontWeight: 400 }}>
+                      {v.bq_snapshot
+                        ? t("ver.snapshot", { name: v.bq_snapshot.split(".").pop() ?? "" })
+                        : t("ver.noSnapshot")}
+                    </div>
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
                     {v.run_id}

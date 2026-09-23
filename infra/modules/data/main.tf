@@ -35,6 +35,38 @@ resource "google_bigquery_dataset" "analytics" {
   delete_contents_on_destroy = true # chi la ban sao, mat thi day lai duoc
 }
 
+# Dataset RIENG chua snapshot cua moi ban ky (P11) — xem
+# docs/thiet-ke-ky-du-lieu.md. Ung dung GHI o day (API tao snapshot luc
+# ky), team Data thi khong: ban da ky khong duoc de ai sua sau lung. Tach
+# khoi "src" de dataset nguon van giu nguyen tac "ung dung chi doc".
+#
+# KHONG dat default_table_expiration: snapshot phai song cung ban ky, vi
+# file gui khach phai tai tao duoc bat cu luc nao.
+resource "google_bigquery_dataset" "signed" {
+  project                    = var.project_id
+  dataset_id                 = var.signed_dataset_id
+  location                   = var.region
+  labels                     = var.labels
+  description                = "Snapshot bang fact tai moi lan ky. Export chi doc tu day. KHONG xoa tay."
+  delete_contents_on_destroy = false # mat snapshot = mat bang chung da gui khach so nao
+}
+
+resource "google_bigquery_dataset_iam_member" "signed_writers" {
+  for_each   = toset(var.signed_writers)
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.signed.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${each.value}"
+}
+
+resource "google_bigquery_dataset_iam_member" "signed_readers" {
+  for_each   = toset(var.signed_readers)
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.signed.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "serviceAccount:${each.value}"
+}
+
 resource "google_bigquery_dataset_iam_member" "analytics_writers" {
   for_each   = toset(var.analytics_writers)
   project    = var.project_id

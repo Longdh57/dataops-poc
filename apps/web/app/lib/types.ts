@@ -35,6 +35,8 @@ export type SignedVersion = {
   open_tickets?: number[] | null;
   /** Phieu duyet: vi sao van ky du con no. */
   approval_note?: string | null;
+  /** Table snapshot BigQuery dong bang du lieu luc ky — Export doc tu day. */
+  bq_snapshot?: string | null;
   sent?: SentRecord[];
 };
 

@@ -6,6 +6,8 @@ noi that ve mon no, va cat sheet khi vuot gioi han cua Excel.
 
 from datetime import datetime, timezone
 
+import pytest
+
 from conftest import export_main
 
 EXCEL_MAX_ROWS = export_main.EXCEL_MAX_ROWS
@@ -30,6 +32,7 @@ def ban_ky(**kw):
         "source_run_ids": ["run-A", "run-B"], "checksum": "abc123",
         "rules_version": 2, "violations": None, "violations_fingerprint": None,
         "open_tickets": None, "approval_note": None,
+        "bq_snapshot": "dataops-poc-2026.dataops_signed.snapshot_1728203494",
     }
     base.update(kw)
     return base
@@ -154,3 +157,27 @@ def test_xlsx_vuot_gioi_han_thi_tach_sheet_chu_khong_cat_bot(tmp_path, monkeypat
 
 def test_gioi_han_that_la_cua_excel():
     assert EXCEL_MAX_ROWS == 1_048_576
+
+
+# ------------------------------------------- P11: doc tu snapshot ban ky
+
+def test_file_doc_tu_snapshot_ban_ky():
+    assert (export_main.snapshot_table(ban_ky())
+            == "dataops-poc-2026.dataops_signed.snapshot_1728203494")
+
+
+def test_ban_ky_khong_co_snapshot_thi_khong_lui_ve_bang_song():
+    """Lui ve bang song la xuat so chua ai duyet — dung cai P11 bit lai."""
+    with pytest.raises(RuntimeError, match="snapshot"):
+        export_main.snapshot_table(ban_ky(bq_snapshot=None))
+
+
+def test_ten_snapshot_la_thi_tu_choi():
+    """Ten bang ghep thang vao FROM, nen chi nhan dung mau API ghi ra."""
+    for xau in ["p.dataops_src.fact_names", "p.d.snapshot_1`; DROP TABLE x --"]:
+        with pytest.raises(RuntimeError):
+            export_main.snapshot_table(ban_ky(bq_snapshot=xau))
+
+
+def test_dau_ban_ky_ghi_ten_snapshot():
+    assert any("snapshot_1728203494" in d for d in stamp_lines(ban_ky(), None, 1))

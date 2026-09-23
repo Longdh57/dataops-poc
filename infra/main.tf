@@ -68,6 +68,7 @@ module "runtime" {
   staging_bucket       = module.storage.bucket
   bq_dataset           = var.bq_dataset
   bq_analytics_dataset = module.data.analytics_dataset_id
+  bq_signed_dataset    = module.data.signed_dataset_id
 }
 
 module "iam" {
@@ -90,6 +91,8 @@ module "data" {
   dataset_id        = var.bq_dataset
   readers           = [local.sa.api, local.sa.jobs]
   analytics_writers = [local.sa.jobs]
+  signed_writers    = [local.sa.api]
+  signed_readers    = [local.sa.jobs]
 }
 
 module "storage" {
