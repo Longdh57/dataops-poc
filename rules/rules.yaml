@@ -1,41 +1,16 @@
-# Bo luat QC khai bao bang cau hinh — them luat moi chi can them mot muc
-# o day, khong sua code.
+# QC rule definitions via configuration — adding a new rule requires only a new entry
+# here; no code modification needed.
 #
-# Moi luat co nam phan:
-#   id       — dinh danh, hien tren giao dien va trong bang qc_exception
-#   severity — critical | warning | info. Chi de xep thu tu doc va de loc:
-#              tu P6, vi pham KHONG khoa cong phat hanh nua (xem
-#              docs/quy-trinh-chat-luong.md). Chi ticket moi chan duoc
-#   scope    — (tuy chon) danh sach bang luat nay ap dung. Bo di = moi bang
-#   message  — cau nguoi dung doc khi gap ngoai le nay
-#   sql      — SELECT tra ve khoa tu nhien (year, state, institution_id,
-#              institution) va cot `observed` dang jsonb de nguoi dung thay
-#              so lieu goc
-#
-# Tu P8, du lieu la FDIC Summary of Deposits (year, state, institution_id,
-# institution, deposit) thay cho usa_names (year, state, gender, name,
-# number). Khoa that la (year, state, institution_id) — CHI BA phan, vi
-# FDIC khong co truc "gioi tinh" tuong duong; `institution` chi la ten hien
-# thi, khong nam trong khoa, vi ten mot to chuc doi cach viet hoa/thuong
-# giua cac nam (vi du "Keybank" nam 2022 vs "KeyBank" tu 2023) trong khi
-# `institution_id` (CERT cua FDIC) luon on dinh.
-#
-# Nguong duoc dat tu profile du lieu that, khong phai doan — rieng nguong
-# cua luat `institution_reappeared_after_gap` la uoc luong ban dau (dataset
-# FDIC moi doi tu P8), can profile lai khi co du lieu chay that dai hon.
-
-# Doi `version` moi khi sua bo luat: so nay duoc ghi vao tung ban ky, de sau
-# nay tai hien duoc team lead da duyet duoi bo luat nao.
-#
-# id/message/cac khoa trong observed deu bang tieng Anh (P9): day la thu
-# duy nhat trong bo luat ma AI Agent doc va tra loi thang lai cho nguoi
-# dung — dich sang tieng Anh cho dong bo voi SYSTEM_PROMPT (app/agent/) khi
-# demo bang tieng Anh. Comment trong file nay van tieng Viet nhu quy uoc
-# chung cua repo — chi noi dung THAT SU di qua model moi can dich.
+# Each rule consists of five parts:
+#   id       — identifier; displayed in the UI and the qc_exception table
+#   severity — critical | warning | info. Used for sorting and filtering:
+#   message  — message displayed to the user when this exception occurs
+#   sql      — SELECT statement returning the natural key (year, state, institution_id,
+#              institution) and an `observed` column (jsonb) to show raw data
 version: 6
 
 rules:
-  # --- Toan ven du lieu: phai luon bang 0, khac 0 la sai o khau nap ---
+  # --- Data integrity: must always equal 0; nonzero means an error occurred during ingestion ---
 
   - id: deposit_share_sum_not_100
     severity: critical
@@ -47,11 +22,11 @@ rules:
             FROM fact_current GROUP BY year, state) g
       WHERE abs(g.tong - 1.0) > 0.000001
 
-  # Khac voi luat tren: luat do kiem TONG ca nhom, luat nay kiem TUNG dong —
-  # chi ra dung o nao dang mang gia tri deposit_share SAI CONG THUC, thay vi
-  # chi biet ca nhom lech khoi 1.0. Cong thuc dung: deposit chia tong deposit
-  # cua ca (year, state) — dung y het cong thuc SAFE_DIVIDE trong
-  # jobs/seed/main.py.
+  # Unlike the rule above: that rule checks the GROUP total, this rule checks EACH
+  # row — pinpointing exactly which row holds a deposit_share value that does NOT
+  # match the formula, instead of only knowing the group as a whole deviates from
+  # 1.0. Correct formula: deposit divided by the total deposit for the same
+  # (year, state) — matches exactly the SAFE_DIVIDE formula in jobs/seed/main.py.
   - id: deposit_share_formula_mismatch
     severity: critical
     message: "This row's deposit_share does not match the formula deposit / total deposit for the state"
@@ -69,7 +44,7 @@ rules:
   - id: deposit_negative_or_zero
     severity: critical
     message: "Deposit is negative or zero — not valid for an active institution"
-    # Vi du ve pham vi: bo dong `scope` di thi luat ap cho moi bang.
+    # Example of scope: omit the `scope` line and the rule applies to every table.
     # scope: [CA, TX]
     sql: |
       SELECT year, state, institution_id, institution,
@@ -77,7 +52,7 @@ rules:
       FROM fact_current
       WHERE deposit <= 0
 
-  # --- Bat thuong nghiep vu: co that trong du lieu ---
+  # --- Business anomalies: genuine irregularities in the data ---
 
   - id: deposit_spike
     severity: critical
