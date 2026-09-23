@@ -1,10 +1,10 @@
 """ADK tool wrappers.
 
-Tat ca la SELECT — khong tool nao ghi/sua duoc gi (dung nguyen tac "AI Agent
-chi doc" cua docs/quy-trinh-chat-luong.md). Pham vi lay tu
-`tool_context.state`, do server gan luc mo session trong service.py — LLM
-khong bao gio truyen hay doi duoc gia tri nay, du co the "gia vo" goi tool
-voi tham so scope trong cau hoi.
+All of them are SELECT-only — no tool can write or modify anything (matches
+the "AI Agent is read-only" principle from docs/quy-trinh-chat-luong.md).
+Scope comes from `tool_context.state`, set by the server when the session
+is opened in service.py — the LLM can never pass or change this value, even
+if it "pretends" to call a tool with a scope argument.
 """
 
 from google.adk.tools import ToolContext
@@ -25,11 +25,11 @@ def _scope_from(tool_context: ToolContext) -> Scope:
 
 def list_qc_exceptions(tool_context: ToolContext, severity: str | None = None,
                        rule_id: str | None = None, year: int | None = None) -> list[dict]:
-    """Liet ke vi pham QC (qc_exception) cua lan nap hien tai, trong pham vi cua nguoi hoi.
+    """List QC violations (qc_exception) from the current load, within the caller's scope.
 
-    Dung khi can xem chi tiet tung vi pham cu the — ten luat, khoa (bang/to
-    chuc/nam), va so lieu quan sat duoc (observed). Loc duoc theo severity
-    (critical/warning), rule_id, hoac year neu nguoi hoi chi ro.
+    Use this when you need details on specific violations — rule name, key
+    (state/institution/year), and the observed values. Can be filtered by
+    severity (critical/warning), rule_id, or year if the user specifies one.
     """
     scope = _scope_from(tool_context)
     with db() as conn, conn.cursor() as cur:
@@ -37,11 +37,11 @@ def list_qc_exceptions(tool_context: ToolContext, severity: str | None = None,
 
 
 def summarize_qc_exceptions(tool_context: ToolContext) -> dict:
-    """Tom tat vi pham QC cua lan nap hien tai theo tung luat va muc do, trong pham vi.
+    """Summarize QC violations from the current load by rule and severity, within scope.
 
-    Goi dau tien khi nguoi hoi can "tinh hinh chung" — tra ve tong so va so
-    luong theo tung rule_id, khong liet ke tung dong nen re token hon nhieu
-    so voi list_qc_exceptions.
+    Call this first when the user asks for the "overall situation" — returns
+    the total and a count per rule_id without listing every row, so it costs
+    far fewer tokens than list_qc_exceptions.
     """
     scope = _scope_from(tool_context)
     with db() as conn, conn.cursor() as cur:
@@ -49,11 +49,12 @@ def summarize_qc_exceptions(tool_context: ToolContext) -> dict:
 
 
 def list_open_tickets(tool_context: ToolContext, state: str | None = None) -> list[dict]:
-    """Liet ke ticket dang mo (open hoac awaiting_verify), trong pham vi.
+    """List open tickets (open or awaiting_verify), within scope.
 
-    Ticket la loi da duoc XAC NHAN bang bang chung — khac vi pham QC (chi la
-    nghi ngo cua may). Dung khi nguoi hoi can biet cai gi dang chan phat
-    hanh, hoac hoi ve bang chung (evidence) cua mot loi da bao.
+    A ticket is a CONFIRMED issue backed by evidence — unlike a QC violation,
+    which is just the machine's suspicion. Use this when the user needs to
+    know what's currently blocking release, or asks about the evidence for
+    an issue that was already reported.
     """
     scope = _scope_from(tool_context)
     with db() as conn, conn.cursor() as cur:
@@ -61,16 +62,17 @@ def list_open_tickets(tool_context: ToolContext, state: str | None = None) -> li
 
 
 def get_fact(tool_context: ToolContext, question: str) -> dict:
-    """Tra cuu du lieu goc trong fact_current bang cau hoi tu do (khong biet
-    truoc khoa chinh xac) — vi du: theo ten to chuc, theo khoang deposit,
-    theo nam/bang, hoac ket hop nhieu dieu kien.
+    """Look up raw data in fact_current using a free-form question (no exact
+    key known ahead of time) — e.g. by institution name, deposit range,
+    year/state, or a combination of conditions.
 
-    Dung khi cac tool khac khong du: list_qc_exceptions/list_open_tickets
-    chi tra vi pham/ticket, khong tra duoc du lieu goc theo dieu kien tu do.
-    Tool nay tu sinh dieu kien loc, thu toi da 3 lan (tu sua neu lan truoc
-    sai), roi tra ve {"error": "khong_the_truy_van", ...} neu van khong
-    duoc — luc do phai noi that voi nguoi dung la khong tra loi duoc, KHONG
-    duoc bia so lieu.
+    Use this when the other tools aren't enough: list_qc_exceptions/
+    list_open_tickets only return violations/tickets, not raw data matching
+    an open-ended condition. This tool generates its own filter condition,
+    retries up to 3 times (self-correcting after a failed attempt), then
+    returns {"error": "cannot_query", ...} if it still can't — in that case
+    you must tell the user honestly that the question could not be
+    answered, and NEVER fabricate a number.
     """
     scope = _scope_from(tool_context)
     with db() as conn, conn.cursor() as cur:

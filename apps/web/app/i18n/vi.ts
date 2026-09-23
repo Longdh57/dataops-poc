@@ -395,6 +395,7 @@ export const vi = {
   "agent.thinking": "Agent đang đọc dữ liệu…",
   "agent.placeholder": "Hỏi về vi phạm, ticket, ưu tiên xử lý…",
   "agent.send": "Gửi",
+  "agent.newChat": "Cuộc trò chuyện mới",
 
   // ---------------------------------------------------------------- AG Grid
   "grid.noRows": "Không có dòng nào",

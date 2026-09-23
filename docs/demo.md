@@ -41,7 +41,7 @@ Chỉ vào banner độ tươi.
 
 ## 1:15 — Một con số sai (90 giây)
 
-Sang tab *Vi phạm*. Chọn một dòng `tang_dot_bien`.
+Sang tab *Vi phạm*. Chọn một dòng `deposit_spike`.
 
 > "Luật QC khai báo trong một file YAML, thêm luật mới không cần sửa code.
 > Luật này bắt được những chỗ deposit tăng hơn 15 lần so với năm trước."

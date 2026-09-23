@@ -26,6 +26,10 @@ docker compose up --build
 http://localhost:3000 — dashboard, luoi du lieu, vi pham QC, ticket.
 Doi package.json thi phai dung `docker compose up -d --build --renew-anon-volumes web`,
 vi node_modules nam trong anonymous volume.
+Rebuild
+```bash
+docker compose up -d --build
+```
 
 ## Ha tang da dung (P1)
 
@@ -136,7 +140,7 @@ khong nhat quan cach viet hoa/thuong giua cac nam (vi du "Keybank" nam
 
 `deposit_share` = ty trong deposit cua mot to chuc trong tong deposit cua
 ca bang, nam do. Cong lai dung bang 1.0 o moi nhom `(year, state)` — day
-la co so cho luat QC `thi_phan_khong_tron_100`.
+la co so cho luat QC `deposit_share_sum_not_100`.
 
 ### Xem tren Postgres
 
@@ -286,12 +290,12 @@ Nguong dat tu profile du lieu that:
 
 | Luat | Muc | Bat duoc (chay that tren 5 nam FDIC, 31.502 dong) |
 |---|---|---|
-| thi_phan_khong_tron_100 | critical | 0 — kiem tra TONG ca nhom (year,state) ≈ 1.0 |
-| deposit_share_sai_cong_thuc | critical | 0 — kiem TUNG dong: `deposit_share` phai khop `deposit / tong deposit ca bang`, chi ra dung o nao sai (khac voi luat tren, chi biet ca nhom lech) |
-| deposit_am_hoac_khong | critical | 509 — deposit <= 0 |
-| tang_dot_bien | critical | 29 — deposit tang >15 lan so nam truoc |
-| to_chuc_bien_mat_roi_quay_lai | critical | 0 |
-| bien_dong_bat_thuong | warning | 96 |
+| deposit_share_sum_not_100 | critical | 0 — kiem tra TONG ca nhom (year,state) ≈ 1.0 |
+| deposit_share_formula_mismatch | critical | 0 — kiem TUNG dong: `deposit_share` phai khop `deposit / tong deposit ca bang`, chi ra dung o nao sai (khac voi luat tren, chi biet ca nhom lech) |
+| deposit_negative_or_zero | critical | 509 — deposit <= 0 |
+| deposit_spike | critical | 29 — deposit tang >15 lan so nam truoc |
+| institution_reappeared_after_gap | critical | 0 |
+| unusual_deposit_change | warning | 96 |
 
 Tu P6, `severity` chi con de xep thu tu doc va de loc — no khong quyet dinh
 duoc gi nua. Chi ticket moi chan phat hanh.
@@ -712,7 +716,7 @@ truc tuong duong "gioi tinh" nen bi bo han, khong thay the.
 |---|---|
 | Migration | `apps/api/alembic/versions/e91a2c5f7b14_p8_doi_dataset_sang_fdic_sod.py` — drop + tao lai 3 bang |
 | Model | `FactCurrent` / `QcException` / `Ticket` trong [apps/api/app/models.py](apps/api/app/models.py) |
-| Bo luat | `rules/rules.yaml` version 5 — viet lai ca 5 luat; `duoi_nguong_kiem_duyet` (nguong cong bo cua SSA, khong ap dung cho FDIC) doi thanh `deposit_am_hoac_khong` (deposit <= 0); them moi `deposit_share_sai_cong_thuc` — kiem TUNG dong deposit_share dung cong thuc, khong chi kiem tong ca nhom |
+| Bo luat | `rules/rules.yaml` version 6 — viet lai ca 5 luat; `duoi_nguong_kiem_duyet` (nguong cong bo cua SSA, khong ap dung cho FDIC) doi thanh `deposit_negative_or_zero` (deposit <= 0); them moi `deposit_share_formula_mismatch` — kiem TUNG dong deposit_share dung cong thuc, khong chi kiem tong ca nhom. Ten luat/message/khoa trong `observed` deu bang tieng Anh (P9) — day la phan bo luat duy nhat AI Agent doc va tra loi thang lai cho nguoi dung |
 | Seed | `jobs/seed/main.py` — xem muc [Seed Job (P8)](#seed-job-p8) |
 | Endpoint doi tham so | `/api/facts`, `/api/exceptions`, `/api/summary`: `gender`/`name` -> `institution`; `/api/tickets` nhan `institution_id` (khong con `gender`/`name`) |
 | Giao dien | Thanh loc bo o "Phan khuc" (gioi tinh), o "Ten" doi thanh "To chuc"; luoi du lieu doi cot `Gioi/Ten` -> `To chuc`, `So tre` -> `Deposit` |
@@ -725,8 +729,8 @@ hai.
 
 Da chay tron tren du lieu that (khong mock): seed 5 nam FDIC (2022-2026,
 385.625 dong chi nhanh -> gop con 31.502 dong to chuc) vao `dataops_src`,
-sync ve Postgres, QC bat **634 vi pham that** (509 `deposit_am_hoac_khong`,
-29 `tang_dot_bien`, 96 `bien_dong_bat_thuong`), AI Agent tra loi dung theo
+sync ve Postgres, QC bat **634 vi pham that** (509 `deposit_negative_or_zero`,
+29 `deposit_spike`, 96 `unusual_deposit_change`), AI Agent tra loi dung theo
 schema moi, 40 test API + 18 test jobs deu qua.
 
 ## Terraform
