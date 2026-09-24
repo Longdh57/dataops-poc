@@ -228,6 +228,25 @@ export const en: Record<MessageKey, string> = {
   "data.loadMore": "Load {n} more rows",
   "data.loadingMore": "Loading…",
   "data.allLoaded": "Everything loaded",
+  "data.col.qc": "QC",
+  "data.qcDotTitle":
+    "{n} QC rule broken on this row — click to see which||{n} QC rules broken on this row — click to see which",
+  "data.qcStaleNote":
+    "The violation dots belong to QC run {runId}, not the load on screen — a row whose number just moved may not have been re-checked yet.",
+  "data.qcStaleRulesNote":
+    "The rule book was just edited (version {current}) but these dots came from version {applied}.",
+  "data.viol.title": "Violations on this row",
+  "data.viol.loading": "this row's violations",
+  "data.viol.empty":
+    "This row broke no rule in the latest QC run. The number may have just moved, or a rule was just edited — open the Rule violations screen to compare.",
+  "data.viol.run": "QC checked load: {runId}",
+  "data.viol.rulesVersion": " · rule set version {v}",
+  "data.viol.ticket": "This cell already has ticket #{id} — {title}",
+  "data.viol.ticketExpected": "the source must be corrected to {expected}",
+  "data.viol.goto": "Open the Rule violations screen",
+  "data.viol.groupNote":
+    "Only violations attached to this exact row are listed. Group-level ones — a whole state's shares not summing to 100%, say — live on the Rule violations screen.",
+
   "data.sortNote":
     "Clicking a column header only sorts the {n} rows already loaded. To sort the whole table, change {field} above — that one runs on the server.",
 

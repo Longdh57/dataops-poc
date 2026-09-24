@@ -110,6 +110,10 @@ export type Fact = {
   ticket_status: string | null;
   ticket_expected: string | null;
   ticket_blocking: boolean | null;
+  /** So luat QC dong nay dang vi pham o lan QC gan nhat. 0 = sach. */
+  violations: number;
+  /** Muc NANG NHAT trong so do — mau cua cham bao vi pham. */
+  violation_severity: "critical" | "warning" | "info" | null;
 };
 
 export type FactsPage = {
@@ -118,6 +122,42 @@ export type FactsPage = {
   has_more: boolean;
   next_cursor: string | null;
   scope: string[] | "tat ca";
+  /** Lan nap dang hien tren luoi. */
+  run_id: string | null;
+  /** Lan nap ma QC da kiem that — cac cham vi pham thuoc ve lan nay. */
+  qc_run_id: string | null;
+  /** true = cham vi pham KHONG phai cua lan nap dang hien. */
+  qc_stale: boolean;
+  qc_stale_reason?: "run" | "rules" | null;
+  /** Version bo luat QC da chay that, va version dang hien hanh. */
+  rules_version: number | null;
+  ruleset_version: number | null;
+};
+
+/** Vi pham cua dung mot o — nap khi nguoi dung bam vao cham do tren luoi.
+ *  Chi co vi pham gan duoc vao dong nay; vi pham cap nhom (tong thi phan
+ *  ca bang lech) nam o man hinh Vi pham luat. */
+export type CellViolations = {
+  run_id: string | null;
+  rows: {
+    id: number;
+    rule_id: string;
+    severity: "critical" | "warning" | "info" | string;
+    message: string;
+    observed: Record<string, unknown> | null;
+    created_at: string;
+  }[];
+  /** Ticket dang song tren dung o nay, neu co. */
+  ticket: {
+    id: number;
+    title: string;
+    status: string;
+    blocking: boolean;
+    expected_value: string;
+  } | null;
+  qc_stale: boolean;
+  qc_stale_reason?: "run" | "rules" | null;
+  rules_version: number | null;
 };
 
 /** Mot luat QC. Tu P10 song trong bang qc_rule, sua duoc tu web

@@ -379,6 +379,36 @@ table.t tr:last-child td { border-bottom: 0; }
 .ag-cell.cell-dim { color: var(--muted); }
 .ag-cell.cell-obs { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 
+/* Cham bao vi pham QC. Mot cham chiem 76px cot, ten luat thi khong vua —
+   nen cham chi noi CO va NANG DEN DAU, bam vao moi biet la luat gi. Vach
+   mau ben trai dong de quet mat nhanh ca man hinh ma khong phai doc cot. */
+.qc-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.qc-dot:hover { background: var(--surface2); }
+.qc-dot-critical { color: var(--crit); }
+.qc-dot-warning { color: var(--warn); }
+.qc-dot-info { color: var(--muted); }
+.qc-dot-n { font-size: 10.5px; }
+
+.ag-row.row-viol-crit { box-shadow: inset 3px 0 0 var(--crit); }
+.ag-row.row-viol-warn { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* Mot vi pham trong hop chi tiet cua dong. */
+.viol-row { border-top: 1px solid var(--line-soft); padding: 10px 0; }
+.viol-row:first-of-type { border-top: 0; padding-top: 0; }
+
 /* ------------------------------------------------------------ doi ngon ngu */
 
 /* Hai nut lien nhau chu khong phai dropdown: chi co hai lua chon, va

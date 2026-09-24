@@ -232,6 +232,24 @@ export const vi = {
   "data.loadMore": "Tải thêm {n} dòng",
   "data.loadingMore": "Đang nạp…",
   "data.allLoaded": "Đã tải hết",
+  "data.col.qc": "QC",
+  "data.qcDotTitle": "{n} luật QC đang bị vi phạm ở dòng này — bấm để xem là luật gì",
+  "data.qcStaleNote":
+    "Chấm vi phạm thuộc lần QC kiểm {runId}, không phải lần nạp đang hiển thị — một dòng vừa đổi số có thể chưa được kiểm lại.",
+  "data.qcStaleRulesNote":
+    "Bộ luật vừa sửa (version {current}) nhưng các chấm vi phạm sinh ra dưới version {applied}.",
+  "data.viol.title": "Vi phạm ở dòng này",
+  "data.viol.loading": "vi phạm của dòng này",
+  "data.viol.empty":
+    "Dòng này không còn vi phạm nào ở lần QC gần nhất. Có thể số vừa đổi, hoặc luật vừa được sửa — mở màn hình Vi phạm luật để đối chiếu.",
+  "data.viol.run": "Lần QC kiểm: {runId}",
+  "data.viol.rulesVersion": " · bộ luật version {v}",
+  "data.viol.ticket": "Ô này đã có ticket #{id} — {title}",
+  "data.viol.ticketExpected": "nguồn phải sửa thành {expected}",
+  "data.viol.goto": "Mở màn hình Vi phạm luật",
+  "data.viol.groupNote":
+    "Chỉ liệt kê vi phạm gắn vào đúng dòng này. Vi phạm ở cấp nhóm — ví dụ tổng thị phần cả bang lệch 100% — nằm ở màn hình Vi phạm luật.",
+
   "data.sortNote":
     "Bấm tiêu đề cột chỉ sắp xếp trong {n} dòng đã tải. Muốn sắp xếp toàn bộ thì đổi ô {field} ở trên — lần đó chạy ở server.",
 

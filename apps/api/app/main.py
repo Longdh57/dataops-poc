@@ -178,6 +178,12 @@ def schema() -> dict:
 
 # ------------------------------------------------------------------- facts
 
+# Thu tu muc do, dung chung cho luoi du lieu va hop chi tiet vi pham: mot o
+# co the vi pham nhieu luat cung luc, nhung tren luoi chi co cho cho MOT
+# cham mau — cham do phai la muc nang nhat, khong phai luat gap dau tien.
+SEVERITY_RANK = "CASE e.severity WHEN 'critical' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END"
+
+
 @app.get("/api/facts")
 def facts(
     p: Me,
@@ -215,23 +221,51 @@ def facts(
     # So doc ra la so cua nguon, khong hon khong kem: ung dung nay khong
     # sua so. O nao dang co ticket thi duoc danh dau de nguoi doc biet no
     # dang cho team Data sua, chu KHONG thay so.
+    #
+    # Vi pham QC dem bang LATERAL o vong ngoai, SAU khi LIMIT da cat: mot
+    # trang 500 dong ton dung 500 lan tra ix_qc_key, chu khong phai mot
+    # lan dem qua ca 1,2 trieu dong. Va chi dem — luat nao bi vi pham thi
+    # /api/facts/violations tra ve luc nguoi dung bam vao cham do. Cot
+    # message lap lai nguyen van o tung dong; nhet no vao moi trang la
+    # phinh duong truyen cho thu hau het khong ai mo ra xem.
     sql = f"""
-        SELECT f.year, f.state, f.institution_id, f.institution, f.run_id,
-               f.deposit, f.deposit_share, f.prev_deposit, f.prev_year,
-               t.id AS ticket_id, t.status AS ticket_status,
-               t.expected_value AS ticket_expected, t.blocking AS ticket_blocking
-        FROM fact_current f
-        LEFT JOIN ticket t
-          ON t.year = f.year AND t.state = f.state
-         AND t.institution_id = f.institution_id AND t.field = 'deposit'
-         AND t.status IN ('open', 'awaiting_verify')
-        {clause}
-        ORDER BY f.{sort} {direction}, f.year {direction}, f.state {direction},
-                 f.institution_id {direction}
-        LIMIT %s
+        WITH trang AS (
+            SELECT f.year, f.state, f.institution_id, f.institution, f.run_id,
+                   f.deposit, f.deposit_share, f.prev_deposit, f.prev_year,
+                   t.id AS ticket_id, t.status AS ticket_status,
+                   t.expected_value AS ticket_expected, t.blocking AS ticket_blocking
+            FROM fact_current f
+            LEFT JOIN ticket t
+              ON t.year = f.year AND t.state = f.state
+             AND t.institution_id = f.institution_id AND t.field = 'deposit'
+             AND t.status IN ('open', 'awaiting_verify')
+            {clause}
+            ORDER BY f.{sort} {direction}, f.year {direction}, f.state {direction},
+                     f.institution_id {direction}
+            LIMIT %s
+        )
+        SELECT trang.*, v.n AS violations, v.severity AS violation_severity
+        FROM trang
+        LEFT JOIN LATERAL (
+            SELECT count(*) AS n,
+                   CASE WHEN count(*) = 0 THEN NULL
+                        ELSE (ARRAY['critical','warning','info'])[min({SEVERITY_RANK})]
+                   END AS severity
+            FROM qc_exception e
+            WHERE e.run_id = %s AND e.year = trang.year AND e.state = trang.state
+              AND e.institution_id = trang.institution_id
+        ) v ON true
+        ORDER BY trang.{sort} {direction}, trang.year {direction},
+                 trang.state {direction}, trang.institution_id {direction}
     """
     with db() as conn, conn.cursor() as cur:
-        cur.execute(sql, [*params, limit + 1])
+        st = qc_state(cur)
+        # Lan nap ma QC da kiem THAT. Lech voi lan nap dang hien thi la
+        # chuyen binh thuong (vua sync xong, QC chua chay lai) — luc do cac
+        # cham do la cua lan nap truoc, va giao dien phai noi ro dieu do
+        # thay vi de nguoi doc tuong no dang noi ve so truoc mat.
+        qc_run = st.get("qc_run_id")
+        cur.execute(sql, [*params, limit + 1, qc_run])
         rows = cur.fetchall()
 
     has_more = len(rows) > limit
@@ -239,7 +273,67 @@ def facts(
 
     return {"rows": rows, "limit": limit, "has_more": has_more,
             "next_cursor": encode_cursor(rows[-1], sort) if rows and has_more else None,
-            "scope": "tat ca" if p.unrestricted else sorted(p.scope_states)}
+            "scope": "tat ca" if p.unrestricted else sorted(p.scope_states),
+            "run_id": st.get("last_run_id"), "qc_run_id": qc_run,
+            "qc_stale": qc_stale(st) is not None, "qc_stale_reason": qc_stale(st),
+            "rules_version": st.get("rules_version"),
+            "ruleset_version": st.get("ruleset_version")}
+
+
+@app.get("/api/facts/violations")
+def fact_violations(
+    p: Me,
+    year: int,
+    state: str,
+    institution_id: int,
+    run_id: str | None = None,
+) -> dict:
+    """Vi pham cua DUNG MOT o — cham do tren luoi du lieu bam vao day.
+
+    Tach khoi /api/facts co chu y: luoi chi can biet co hay khong, va nang
+    den dau, de ve cham mau; con vi pham luat gi thi phai doc chu, ma doc
+    thi moi lan chi doc mot o.
+
+    Khong tra ve vi pham cap nhom (luat nao co institution_id NULL, vi du
+    tong thi phan cua ca bang lech 100%) — nhung vi pham do khong thuoc ve
+    rieng dong nao, dan len ca nghin dong cung mot canh bao la bao sai cho
+    999 dong vo can. Chung nam o man hinh Vi pham luat.
+    """
+    state = state.upper()
+    if not p.unrestricted and state not in p.scope_states:
+        raise HTTPException(403, f"ban khong co pham vi tren bang {state}")
+
+    with db() as conn, conn.cursor() as cur:
+        st = qc_state(cur)
+        target = run_id or st.get("qc_run_id")
+        stale, reason = qc_stale(st) is not None, qc_stale(st)
+        if not target:
+            return {"run_id": None, "rows": [], "ticket": None,
+                    "qc_stale": stale, "qc_stale_reason": reason,
+                    "rules_version": st.get("rules_version")}
+
+        cur.execute(
+            f"""SELECT id, rule_id, severity, message, observed, created_at
+                FROM qc_exception e
+                WHERE e.run_id = %s AND e.year = %s AND e.state = %s
+                  AND e.institution_id = %s
+                ORDER BY {SEVERITY_RANK}, e.rule_id""",
+            (target, year, state, institution_id))
+        rows = cur.fetchall()
+
+        # Ai bam vao cham do cung hoi ngay cau thu hai: "cai nay co ai lo
+        # chua". Tra loi luon, de khong phai sang man hinh khac de biet.
+        cur.execute(
+            """SELECT id, title, status, blocking, expected_value
+               FROM ticket
+               WHERE year=%s AND state=%s AND institution_id=%s AND field='deposit'
+                 AND status IN ('open','awaiting_verify')""",
+            (year, state, institution_id))
+        ticket = cur.fetchone()
+
+    return {"run_id": target, "rows": rows, "ticket": ticket,
+            "qc_stale": stale, "qc_stale_reason": reason,
+            "rules_version": st.get("rules_version")}
 
 
 # ------------------------------------------------------ van tay & vi pham

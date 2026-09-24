@@ -286,7 +286,8 @@ Từ P6, vi phạm luật KHÔNG còn khóa cổng — xem mục [Quy trình ch�
 | Method | Đường dẫn | Ý nghĩa |
 |---|---|---|
 | GET | `/api/me` | danh tính, vai trò, phạm vi |
-| GET | `/api/facts` | lọc, sắp xếp (allowlist), phân trang keyset; số LUÔN là số nguồn |
+| GET | `/api/facts` | lọc, sắp xếp (allowlist), phân trang keyset; số LUÔN là số nguồn. Mỗi dòng kèm `violations` + `violation_severity` — đủ để vẽ chấm, không hơn (P13) |
+| GET | `/api/facts/violations?year=&state=&institution_id=` | vi phạm của đúng một ô, nạp khi bấm vào chấm (P13) |
 | GET | `/api/exceptions` | vi phạm của lần nạp hiện tại, trong phạm vi |
 | POST | `/api/tickets` | báo lỗi cho team Data — bắt buộc có `expected_value` |
 | GET | `/api/tickets` | ticket trong phạm vi |
@@ -370,7 +371,7 @@ duy nhất.
 | Trang | Làm gì |
 |---|---|
 | `/` | Dashboard: ô chỉ số, chênh lệch so với bản đã ký, vi phạm theo luật và theo khu vực, trạng thái cổng |
-| `/data` | Lưới 1,2 triệu dòng bằng AG Grid, cuộn liên tục |
+| `/data` | Lưới 1,2 triệu dòng bằng AG Grid, cuộn liên tục; dòng vi phạm QC mang chấm màu (P13) |
 | `/exceptions` | Vi phạm của lần nạp hiện tại + panel điều tra bên phải |
 | `/tickets` | Ticket gửi team Data — P6 |
 | `/versions` | Bản đã ký: ai ký, lúc nào, đã gửi cho khách nào |
@@ -805,6 +806,32 @@ diện từ trước; tài khoản còn giữ nó thì màn hình cảnh báo tr
 Test: `apps/api/tests/test_users.py` — 18 bài, trong đó bài cuối gọi
 `/api/facts` để chắc rằng phạm vi vừa cấp **có hiệu lực thật** ở tầng dữ
 liệu chứ không chỉ hiện đẹp trên màn hình.
+
+## Đánh dấu vi phạm QC trên lưới dữ liệu (P13)
+
+Trước P13, lưới dữ liệu và màn hình Vi phạm luật là hai thế giới tách rời:
+đang đọc số ở `/data` thì không có cách nào biết dòng trước mặt có sạch hay
+không, phải nhớ khoá rồi sang màn hình khác tra. Giờ dòng nào đang vi phạm
+luật thì mang một **chấm màu** ở cột QC đầu bảng, kèm vạch màu mép trái dòng
+để quét mắt nhanh cả màn hình.
+
+| | |
+|---|---|
+| Bảng | Không thêm bảng nào: `qc_exception` đã có khoá `(year, state, institution_id)` từ P8, và index `ix_qc_key` nằm sẵn trên đúng ba cột đó |
+| Đếm ở đâu | `LEFT JOIN LATERAL` ở **vòng ngoài**, sau khi `LIMIT` đã cắt. Một trang 500 dòng tốn đúng 500 lần tra index, không phải một lần đếm qua 1,2 triệu dòng. Đặt join vào trong truy vấn chính là bắt Postgres đếm cho **mọi** dòng lọt bộ lọc rồi mới sắp xếp và cắt |
+| Chấm nói gì | Chỉ hai thứ: **có** vi phạm không, và **nặng đến đâu** (`violations`, `violation_severity` = mức nặng nhất trong các luật dòng đó phạm). Tên luật dài gấp mấy lần bề ngang một cột, mà phần lớn dòng thì không vi phạm gì |
+| Luật gì thì bấm | `/api/facts/violations` trả về đúng một ô: luật, mức, lời giải thích, `observed`, và ticket đang sống nếu có. Cột `message` lặp lại nguyên văn ở từng dòng — kéo sẵn cả trang 500 dòng là trả tiền cho thứ hầu hết không ai mở ra xem |
+| Ô sạch phải là NULL | Aggregate trên tập rỗng vẫn trả về một dòng, nên thiếu chặn `CASE WHEN count(*) = 0` là **mọi** dòng sạch đều đội một chấm. Đây là chỗ dễ sai nhất, và `test_dong_sach_khong_co_cham` giữ nó |
+| Vi phạm cấp nhóm không dán vào dòng | Luật như `deposit_share_sum_not_100` sinh vi phạm với `institution_id` NULL — nó nói về cả bang, không về dòng nào. Dán cảnh báo đó lên từng dòng là báo sai cho cả nghìn dòng vô can, nên chúng chỉ nằm ở màn hình Vi phạm luật |
+| Chấm thuộc về lần QC nào | `/api/facts` trả thêm `qc_run_id` / `qc_stale` / `qc_stale_reason`. Vừa sync xong mà QC chưa chạy lại thì chấm là **của lần nạp trước** — banner nói thẳng điều đó thay vì để người đọc tưởng chấm đang nói về con số trước mặt |
+| Phạm vi | `/api/facts/violations` kiểm `state` theo phạm vi của người gọi trước khi đọc, y như `/api/exceptions/{id}` — endpoint mới là một đường rò rỉ mới nếu quên |
+
+Bấm chấm mở hộp chi tiết; trong hộp có link sang `/exceptions` đã lọc sẵn
+đúng ô đó (bộ lọc nằm trên URL nên link tự mang theo bang, năm, tổ chức).
+
+Test: `apps/api/tests/test_facts_violations.py` — 10 bài. File này **tự dựng
+dữ liệu của chính nó** (ba dòng giả ở năm 1901, dọn sạch sau mỗi bài) nên
+chạy được cả trên database trống, không cần đợi lần seed 1,2 triệu dòng.
 
 ## Terraform
 
