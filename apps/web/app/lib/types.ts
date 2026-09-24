@@ -362,3 +362,35 @@ export type UsersRes = {
 /** Bo chon danh tinh doc duong rieng (`/users/switchable`, chi che do dev)
  *  va chi can bay nhieu day. Man hinh quan tri thi chi admin goi duoc. */
 export type SwitchableUser = Pick<AppUser, "email" | "display_name" | "role" | "scope_states">;
+
+/** Token + uoc tinh chi phi Vertex AI tu dau thang (UTC), doc tu Cloud
+ *  Monitoring chu khong phai tu dem trong ung dung.
+ *
+ *  Hai dieu man hinh PHAI noi ro, khong duoc hien tran con so:
+ *  - La cua CA PROJECT — gop moi duong goi Vertex AI, khong tach duoc
+ *    theo nguoi hoi hay theo phien.
+ *  - `cost_usd` la UOC TINH theo gia niem yet, khong tru credit hay giam
+ *    gia hop dong. So that nam o Cloud Billing.
+ *
+ *  `available: false` = khong doc duoc (thieu quyen, chua cau hinh, API
+ *  loi). Man hinh im lang bo qua, khong bao loi. */
+export type AgentUsage =
+  | { available: false; reason: string }
+  | {
+      available: true;
+      period_start: string;
+      as_of: string;
+      input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+      cost_usd: number;
+      /** Model chua co trong bang gia — tien cua chung KHONG nam trong
+       *  `cost_usd`, nen man hinh phai bao la con so con thieu. */
+      unpriced_models: string[];
+      by_model: {
+        model: string;
+        input_tokens: number;
+        output_tokens: number;
+        cost_usd: number | null;
+      }[];
+    };

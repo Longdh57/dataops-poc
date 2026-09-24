@@ -458,6 +458,10 @@ export const vi = {
   "agent.placeholder": "Hỏi về vi phạm, ticket, ưu tiên xử lý…",
   "agent.send": "Gửi",
   "agent.newChat": "Cuộc trò chuyện mới",
+  "agent.usage.pill": "Tháng này: {tokens} token · ≈{cost}",
+  "agent.usage.tip":
+    "Tính từ {from} (giờ UTC). Số token đọc từ Cloud Monitoring, là của CẢ PROJECT — gộp mọi lệnh gọi Vertex AI, không tách được theo người hỏi. Tiền chỉ là ước tính theo giá niêm yết, chưa trừ credit hay giảm giá hợp đồng; số thật xem ở Cloud Billing. Dữ liệu trễ vài phút. Vào: {input} · Ra: {output}",
+  "agent.usage.unpriced": "Chưa có bảng giá cho {models} — tiền hiển thị đang thiếu phần này.",
 
   // ------------------------------------------------ man nguoi dung & quyen
   "users.title": "Người dùng & phân quyền",

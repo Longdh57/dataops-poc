@@ -217,3 +217,86 @@ def test_agent_chat_bat_buoc_co_message(client):
 def test_agent_chat_bat_buoc_dang_nhap(client):
     res = client.post("/api/agent/chat", json={"message": "hi"})
     assert res.status_code == 401
+
+
+# ------------------------------- chi phi Vertex AI thang nay (Cloud Monitoring)
+
+def _series(model: str, kind: str, *values: int) -> dict:
+    return {
+        "resource": {"labels": {"model_user_id": model}},
+        "metric": {"labels": {"type": kind}},
+        "points": [{"value": {"int64Value": str(v)}} for v in values],
+    }
+
+
+def test_summarize_cong_token_theo_ngay_va_quy_ra_tien():
+    """Monitoring tra ve mot diem MOI NGAY (alignmentPeriod 86400s), nen
+    tong thang la tong cac diem — khong phai diem cuoi cung."""
+    import datetime as dt
+
+    from app.agent import usage
+
+    start = dt.datetime(2026, 9, 1)
+    now = dt.datetime(2026, 9, 24)
+    out = usage._summarize(
+        [_series("gemini-2.5-flash", "input", 1_000_000, 294_664),
+         _series("gemini-2.5-flash", "output", 80_000, 4_845)],
+        start, now)
+
+    assert out["available"] is True
+    assert out["input_tokens"] == 1_294_664
+    assert out["output_tokens"] == 84_845
+    assert out["total_tokens"] == 1_379_509
+    # 1.294664M x $0.30 + 0.084845M x $2.50
+    assert round(out["cost_usd"], 4) == round(0.3883992 + 0.2121125, 4)
+    assert out["unpriced_models"] == []
+
+
+def test_summarize_model_chua_co_gia_thi_bao_ra_chu_khong_cong_thieu_im_lang():
+    """Doi AGENT_MODEL sang model chua co trong bang gia la chuyen se xay
+    ra (2.5 Flash co lich ngung phuc vu). Luc do token van phai hien, tien
+    thi bo trong VA noi ro — cong thieu ma khong bao la sai nguy hiem hon
+    khong co so."""
+    import datetime as dt
+
+    from app.agent import usage
+
+    out = usage._summarize(
+        [_series("gemini-2.5-flash", "input", 1_000_000),
+         _series("gemini-9-chua-ton-tai", "input", 5_000_000)],
+        dt.datetime(2026, 9, 1), dt.datetime(2026, 9, 24))
+
+    assert out["input_tokens"] == 6_000_000  # token van dem du
+    assert out["unpriced_models"] == ["gemini-9-chua-ton-tai"]
+    assert round(out["cost_usd"], 4) == 0.3  # chi tinh phan biet gia
+    hit = [r for r in out["by_model"] if r["model"] == "gemini-9-chua-ton-tai"][0]
+    assert hit["cost_usd"] is None
+
+
+def test_month_usage_loi_monitoring_khong_lam_hong_man_hinh(monkeypatch):
+    """Man hinh Agent goi ham nay de hien mot o phu. Thieu quyen hay
+    Monitoring tra loi deu KHONG duoc nem exception — cho chat phai chay
+    duoc ke ca khi khong biet chi phi."""
+    from app.agent import usage
+
+    monkeypatch.setattr(usage, "_cache", None)
+    monkeypatch.setattr(usage.settings, "gcp_project_id", "du-an-gia-lap")
+    monkeypatch.setattr(
+        usage, "_fetch",
+        lambda s, e: (_ for _ in ()).throw(RuntimeError("Monitoring API 403: thieu quyen")))
+
+    out = usage.month_usage(force=True)
+    assert out["available"] is False
+    assert "403" in out["reason"]
+
+
+def test_agent_usage_chi_danh_cho_team_lead_va_admin(client, monkeypatch):
+    """Chi phi ha tang khong phai du lieu nghiep vu — analyst khong xem."""
+    monkeypatch.setattr(main_module.agent, "month_usage",
+                        lambda: {"available": True, "cost_usd": 1.23})
+
+    assert client.get("/api/agent/usage", headers=as_user(TX)).status_code == 403
+
+    res = client.get("/api/agent/usage", headers=as_user(ADMIN))
+    assert res.status_code == 200
+    assert res.json()["cost_usd"] == 1.23

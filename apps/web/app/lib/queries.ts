@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
 import type {
-  Gate, Me, Options, RulesCatalog, Summary, SwitchableUser, Ticket, UsersRes,
+  AgentUsage, Gate, Me, Options, RulesCatalog, Summary, SwitchableUser, Ticket, UsersRes,
   VersionInfo,
 } from "./types";
 
@@ -85,4 +85,18 @@ export const useSwitchableUsers = (enabled = true) =>
     enabled,
     retry: false,
     staleTime: 60_000,
+  });
+
+/** Chi phi Vertex AI thang nay cho man hinh AI Agent. CHI team_lead/admin
+ *  goi duoc — vai tro khac nhan 403 va o chi phi im lang khong hien, nen
+ *  `retry: false` de khong goi lai mot loi da biet chac.
+ *
+ *  Metric ben Google tre vai phut va server con cache 5 phut nua, nen
+ *  staleTime dai la dung — goi day hon cung khong ra so moi. */
+export const useAgentUsage = () =>
+  useQuery({
+    queryKey: ["agent", "usage"],
+    queryFn: () => gw<AgentUsage>("/agent/usage"),
+    retry: false,
+    staleTime: 300_000,
   });

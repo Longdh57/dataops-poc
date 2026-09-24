@@ -688,7 +688,8 @@ hỏi. Xác nhận thật qua bảng `events` (ADK tự ghi): mọi câu hỏi �
 | Session | `DatabaseSessionService` của ADK, lưu THẲNG trên Postgres đang có (`DATABASE_URL`, dialect `postgresql+psycopg://` — không cần driver mới). ADK tự tạo 5 bảng riêng (`sessions`, `events`, `app_states`, `user_states`, `adk_internal_metadata`) **ngoài Alembic** — đây là cách ADK tự quản lý, khác với mọi bảng khác trong repo này |
 | Phạm vi | Ép tại TẦNG TOOL: `service.chat()` gắn `scope_states`/`unrestricted` vào session state LÚC MỞ PHIÊN (từ `authz.Principal`, không từ LLM); `tools.py` chỉ đọc lại từ đó. LLM không thể "giả vờ" gọi tool với scope khác |
 | Model | `gemini-2.5-flash` qua Vertex AI (biến `GOOGLE_GENAI_USE_VERTEXAI=TRUE` đặt trong code lúc import, không cần Terraform/docker-compose thêm) — không dùng API key, ADC như trước |
-| Quyền GCP | Service account `dataops-api` có `roles/aiplatform.user` — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) (không đổi từ P7) |
+| Quyền GCP | Service account `dataops-api` có `roles/aiplatform.user` (gọi Gemini) và `roles/monitoring.viewer` (đọc số token đã dùng) — [infra/modules/iam/main.tf](infra/modules/iam/main.tf) |
+| Chi phí | `GET /api/agent/usage` — token + ước tính tiền Vertex AI **tháng này**, hiện ở ô góc phải trang `/agent`. Đọc từ Cloud Monitoring (metric `aiplatform.googleapis.com/publisher/online_serving/token_count`) chứ KHÔNG tự cộng `usage_metadata` của từng request. Chỉ `team_lead`/`admin` xem được — đây là chi phí hạ tầng, không phải dữ liệu nghiệp vụ. Hai giới hạn phải nói rõ với người đọc (tooltip có ghi): con số là của **cả project** nên không tách được theo người hỏi, và tiền chỉ là **ước tính theo giá niêm yết**, chưa trừ credit — số thật nằm ở Cloud Billing. Gọi không được (thiếu quyền, chạy local) thì ô tự ẩn, không làm hỏng chỗ chat. Xem [app/agent/usage.py](apps/api/app/agent/usage.py) |
 | Test | [test_agent.py](apps/api/tests/test_agent.py) — phạm vi kiểm THẬT trực tiếp trên `queries.py` (không cần mock ADK), endpoint mock `agent.chat()` để không gọi Vertex AI thật trong CI |
 
 **Trước khi dùng**: bật API `aiplatform.googleapis.com` cho project (repo
@@ -697,7 +698,18 @@ xem [Hạ tầng đã dựng (P1)](#hạ-tầng-đã-dựng-p1)):
 
 ```bash
 gcloud services enable aiplatform.googleapis.com --project=dataops-poc-2026
-cd infra && terraform apply   # cấp thêm role aiplatform.user cho dataops-api
+cd infra && terraform apply   # cấp aiplatform.user + monitoring.viewer cho dataops-api
+```
+
+Ô chi phí trên trang `/agent` cần `roles/monitoring.viewer`. CI chỉ deploy
+code, KHÔNG chạy Terraform — thiếu bước `terraform apply` ở trên thì ô này
+lặng lẽ không hiện (endpoint trả `available: false`), chỗ chat vẫn chạy
+bình thường. Cấp tay không qua Terraform:
+
+```bash
+gcloud projects add-iam-policy-binding dataops-poc-2026 \
+  --member="serviceAccount:dataops-api@dataops-poc-2026.iam.gserviceaccount.com" \
+  --role="roles/monitoring.viewer"
 ```
 
 ## Đẩy qc_exception lên BigQuery (P7, mirror một chiều)

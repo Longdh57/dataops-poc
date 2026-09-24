@@ -456,6 +456,10 @@ export const en: Record<MessageKey, string> = {
   "agent.placeholder": "Ask about violations, tickets, what to fix first…",
   "agent.send": "Send",
   "agent.newChat": "New conversation",
+  "agent.usage.pill": "This month: {tokens} tokens · ≈{cost}",
+  "agent.usage.tip":
+    "Since {from} (UTC). Token counts come from Cloud Monitoring and cover the WHOLE PROJECT — every Vertex AI call, with no split per asker. The amount is an estimate at list price, before credits or contract discounts; the real figure lives in Cloud Billing. Data lags by a few minutes. In: {input} · Out: {output}",
+  "agent.usage.unpriced": "No price table for {models} — the amount shown is missing that part.",
 
   // ------------------------------------------------ man nguoi dung & quyen
   "users.title": "Users & permissions",

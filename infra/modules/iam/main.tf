@@ -89,8 +89,11 @@ locals {
     api = {
       display = "Dataops API (Cloud Run)"
       # aiplatform.user: goi Gemini qua Vertex AI cho AI Agent (P7).
+      # monitoring.viewer: doc metric token_count de hien chi phi Vertex AI
+      # thang nay tren man hinh Agent (xem app/agent/usage.py). Chi DOC
+      # metric, khong cho ghi va khong dung toi du lieu nghiep vu nao.
       roles = ["roles/bigquery.dataViewer", "roles/bigquery.jobUser", "roles/cloudsql.client",
-      "roles/aiplatform.user"]
+      "roles/aiplatform.user", "roles/monitoring.viewer"]
     }
     jobs = {
       display = "Dataops Jobs (Sync, QC, Export)"

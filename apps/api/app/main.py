@@ -924,6 +924,26 @@ async def agent_chat(body: AgentChatBody, p: Me) -> dict:
     return {"reply": reply, "session_id": session_id}
 
 
+@app.get("/api/agent/usage")
+def agent_usage(p: Me) -> dict:
+    """Token + uoc tinh chi phi Vertex AI tu dau thang (UTC).
+
+    Doc tu Cloud Monitoring chu khong tu dem — xem app/agent/usage.py cho
+    hai gioi han cua con so nay (la cua CA PROJECT, va tien chi la uoc
+    tinh theo gia niem yet).
+
+    Gioi han o team_lead/admin: day la chi phi ha tang, khong phai du lieu
+    nghiep vu. Muon cho ca analyst xem thi bo dong require di — tool cua
+    agent van tu ep pham vi, endpoint nay khong lam lo du lieu bang nao.
+
+    Khong bao gio tra 5xx: goi khong duoc Monitoring thi tra
+    {"available": false, "reason": ...} de o chi phi tren man hinh Agent
+    im lang bien mat, khong lam hong cho chat.
+    """
+    p.require("team_lead", "admin")
+    return agent.month_usage()
+
+
 # ---------------------------------------------------------------- release
 
 class ReleaseBody(BaseModel):
