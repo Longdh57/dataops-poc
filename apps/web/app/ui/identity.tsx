@@ -3,23 +3,20 @@
 // Danh tinh nguoi dang dang nhap. Khi IAP da bat, phan nay chi hien thi —
 // danh tinh den tu JWT do Google ky. Khi chua bat (REQUIRE_IAP=false),
 // them bo chon de thay phan quyen hoat dong that.
+//
+// Danh sach nguoi doi duoc lay tu /api/users chu khong con go cung trong
+// ma nguon: tai khoan tao o man hinh Nguoi dung phai xuat hien ngay o day,
+// khong thi tao xong roi khong co cach nao thu.
 
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useI18n } from "@/app/i18n/context";
-import type { MessageKey } from "@/app/i18n/translate";
-import { useMe } from "@/app/lib/queries";
+import { useMe, useSwitchableUsers } from "@/app/lib/queries";
 
 const COOKIE = "dataops_as";
-
-export const DEV_USERS: { email: string; label: MessageKey }[] = [
-  { email: "longbloginfo@gmail.com", label: "identity.user.admin" },
-  { email: "lead@dataops.test", label: "identity.user.lead" },
-  { email: "analyst.tx@dataops.test", label: "identity.user.analystTx" },
-  { email: "analyst.ca@dataops.test", label: "identity.user.analystCa" },
-];
 
 function setCookie(email: string) {
   document.cookie = `${COOKIE}=${encodeURIComponent(email)}; path=/; max-age=2592000; samesite=lax`;
@@ -38,6 +35,12 @@ export default function Identity() {
   const pathname = usePathname();
   const sp = useSearchParams();
   const [open, setOpen] = useState(false);
+
+  // Chi goi khi bo chon that su dung duoc. Bat IAP len thi endpoint nay
+  // khong con, va bo chon cung dang bi khoa.
+  const devMode = me?.require_iap === false;
+  const { data: users } = useSwitchableUsers(devMode);
+  const isAdmin = me?.roles?.includes("admin") ?? false;
 
   // Giu duong link cu cua README: /?as=analyst.tx@dataops.test
   //
@@ -72,13 +75,17 @@ export default function Identity() {
       ? t("common.all")
       : undefined;
 
+  // Server da loc tai khoan bi tat: chung khong dang nhap duoc
+  // (authz.load_principal chan), dua vao day chi de nguoi dung bam roi an 403.
+  const rows = users?.rows ?? [];
+
   return (
     <div style={{ position: "relative" }}>
       <button
         className="btn btn-sm"
         onClick={() => setOpen((v) => !v)}
-        disabled={me?.require_iap !== false}
-        title={me?.require_iap ? t("identity.fromIap") : t("identity.switchDev")}
+        disabled={!devMode}
+        title={devMode ? t("identity.switchDev") : t("identity.fromIap")}
       >
         <span className="mono" style={{ fontSize: 11.5 }}>
           {me?.email ?? "…"}
@@ -90,29 +97,46 @@ export default function Identity() {
       {open ? (
         <div
           className="card"
-          style={{ position: "absolute", right: 0, top: 36, width: 280, zIndex: 30, padding: 9 }}
+          style={{ position: "absolute", right: 0, top: 36, width: 300, zIndex: 30, padding: 9 }}
         >
           <div className="stat-label" style={{ padding: "2px 6px 7px" }}>
             {t("identity.signInAs")}
           </div>
-          {DEV_USERS.map((u) => (
+
+          {rows.length === 0 ? (
+            <div className="hint" style={{ padding: "0 6px 6px" }}>
+              {t("identity.empty")}
+            </div>
+          ) : null}
+
+          {rows.map((u) => (
             <button
               key={u.email}
-              className="btn btn-sm"
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                border: 0,
-                marginBottom: 2,
-                background: u.email === me?.email ? "var(--accent-soft)" : "transparent",
-                color: u.email === me?.email ? "var(--accent)" : "var(--ink2)",
-              }}
+              className="btn btn-sm identity-pick"
+              data-on={u.email === me?.email ? "1" : "0"}
               onClick={() => pick(u.email)}
             >
-              {t(u.label)}
+              <span>{u.display_name || u.email}</span>
+              <span className="mono identity-pick-mail">{u.email}</span>
+              <span className="identity-pick-role">
+                <span className="pill pill-accent">{u.role ?? "—"}</span>
+                <span className="pill">
+                  {u.scope_states?.length ? u.scope_states.join(", ") : t("common.all")}
+                </span>
+              </span>
             </button>
           ))}
+
+          {isAdmin ? (
+            <Link
+              href="/users"
+              className="btn btn-sm"
+              style={{ display: "block", textAlign: "center", marginTop: 6 }}
+              onClick={() => setOpen(false)}
+            >
+              {t("identity.manage")}
+            </Link>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -294,3 +294,31 @@ export type Options = {
   years: number[];
   sortable: string[];
 };
+
+/** Mot tai khoan trong app_user + vai tro cua no.
+ *
+ *  `role` la MOT chuoi chu khong phai mang: bang app_role chua duoc nhieu
+ *  dong nhung man hinh quan tri chi ghi mot — xem ghi chu o main.py, muc
+ *  "nguoi dung & phan quyen". Gia tri co the nam ngoai `roles` tra ve
+ *  (vi du `sale` cua ban seed cu) nen dung hien thi nhu enum dong.
+ *
+ *  `scope_states` rong/null = KHONG GIOI HAN bang. */
+export type AppUser = {
+  id: number;
+  email: string;
+  display_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  role: string | null;
+  scope_states: string[] | null;
+};
+
+export type UsersRes = {
+  rows: AppUser[];
+  /** Vai tro tao moi duoc — server la noi quyet dinh, khong phai giao dien. */
+  roles: string[];
+};
+
+/** Bo chon danh tinh doc duong rieng (`/users/switchable`, chi che do dev)
+ *  va chi can bay nhieu day. Man hinh quan tri thi chi admin goi duoc. */
+export type SwitchableUser = Pick<AppUser, "email" | "display_name" | "role" | "scope_states">;

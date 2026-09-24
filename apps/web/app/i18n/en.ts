@@ -34,6 +34,7 @@ export const en: Record<MessageKey, string> = {
   "nav.versions": "Versions",
   "nav.requests": "Data requests",
   "nav.agent": "AI Agent",
+  "nav.users": "Users",
   "shell.brand": "Data Operations",
   "shell.badgeBlocking": "{n} ticket is blocking release||{n} tickets are blocking release",
   "shell.badgeGateLocked": "the release gate is locked",
@@ -50,11 +51,9 @@ export const en: Record<MessageKey, string> = {
   // ------------------------------------------------------------- identity
   "identity.fromIap": "Identity comes from IAP",
   "identity.switchDev": "Switch identity (dev mode)",
+  "identity.empty": "No active accounts yet.",
+  "identity.manage": "Manage users",
   "identity.signInAs": "Sign in as",
-  "identity.user.admin": "Admin — full access",
-  "identity.user.lead": "Team Lead — signs releases",
-  "identity.user.analystTx": "Analyst — Texas only",
-  "identity.user.analystCa": "Analyst — California only",
 
   // ------------------------------------------------------------- freshness
   "strip.run": "Load",
@@ -438,6 +437,49 @@ export const en: Record<MessageKey, string> = {
   "agent.placeholder": "Ask about violations, tickets, what to fix first…",
   "agent.send": "Send",
   "agent.newChat": "New conversation",
+
+  // ------------------------------------------------ man nguoi dung & quyen
+  "users.title": "Users & permissions",
+  "users.sub":
+    "Business permissions live in the application database, not in IAM — IAM only decides who gets through the gate. Accounts created here show up right away in the identity switcher at the top right.",
+  "users.add": "Add user",
+  "users.edit": "Edit",
+  "users.delete": "Delete",
+  "users.loading": "users",
+  "users.empty": "No accounts yet.",
+  "users.you": "you",
+  "users.active": "active",
+  "users.inactive": "disabled",
+  "users.adminOnly":
+    "Only admins can open this screen. Granting permissions belongs to one role, and so does seeing who holds what.",
+  "users.cantDeleteSelf": "You cannot delete yourself",
+  "users.col.name": "Display name",
+  "users.col.email": "Email",
+  "users.col.role": "Role",
+  "users.col.scope": "Scope",
+  "users.col.state": "Status",
+  "users.col.createdAt": "Created",
+  "users.editTitle": "Edit {email}",
+  "users.deleteTitle": "Delete account",
+  "users.deleteWarn":
+    "This deletes {email} for good; they will no longer be able to call the API. To keep the trail, open Edit and clear “Account active” instead of deleting.",
+  "users.role.admin": "Full access, no state limit",
+  "users.role.team_lead": "Signs releases, reloads from source, edits QC rules",
+  "users.role.analyst": "Reads and opens tickets within the assigned states",
+  "users.form.email": "Email",
+  "users.form.emailHint": "This is the caller identity the API sees — use the real sign-in address.",
+  "users.form.emailLocked": "Email cannot change: it is the identity key stored in the audit log and in signed versions.",
+  "users.form.name": "Display name",
+  "users.form.role": "Role",
+  "users.form.unknownRole":
+    "This account holds the role “{role}”, which can no longer be granted. Saving replaces it with the selected role.",
+  "users.form.scope": "States visible",
+  "users.form.scopeHint":
+    "Pick at least one state. Leaving it empty does not mean “nothing granted” — it means unrestricted, and the server rejects it.",
+  "users.form.scopeAll": "This role is not limited to any state.",
+  "users.form.active": "Account active",
+  "users.form.save": "Save",
+  "users.form.saving": "Saving…",
 
   // ---------------------------------------------------------------- AG Grid
   "grid.noRows": "No rows to show",

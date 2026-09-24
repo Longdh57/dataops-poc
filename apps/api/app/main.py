@@ -15,6 +15,7 @@ nay, doc truoc khi sua:
 import base64
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
@@ -1420,3 +1421,196 @@ def rebuild(p: Me) -> dict:
         conn.commit()
     return {"job": settings.sync_job_name, "operation": note,
             "note": "Sync Job dang chay — banner do tuoi se doi khi xong"}
+
+
+# ------------------------------------------------- nguoi dung & phan quyen
+#
+# Quyen nghiep vu nam trong Postgres (app_user + app_role), khong nam trong
+# IAM — xem docs/runbook.md. Truoc day them nguoi phai vao psql go tay; gio
+# co man hinh, nhung hai rang buoc duoi day thi giao dien khong duoc bo:
+#
+# - MOT nguoi MOT vai tro. Bang app_role chua duoc nhieu dong, nhung man
+#   hinh chi cho chon mot — doi vai tro la THAY THE ca bo, khong cong don.
+#   Cong don la cach de nhat de mot analyst giu lai pham vi cu sau khi bi
+#   ha quyen.
+# - Analyst BAT BUOC co it nhat mot bang. scope_states rong nghia la KHONG
+#   GIOI HAN (xem authz.scope_clause), nen "quen chon" se cap nham toan bo
+#   du lieu chu khong phai cap thieu.
+#
+# Email BAT BIEN sau khi tao: no la khoa dinh danh nguoi goi (auth.py) va
+# duoc luu duoi dang chuoi trong audit_log.actor, ticket.created_by,
+# signed_version.signed_by — khong co khoa ngoai nao de doi ten theo.
+
+ROLES = ("admin", "team_lead", "analyst")
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+USER_SELECT = """
+    SELECT x.* FROM (
+        SELECT DISTINCT ON (u.id)
+               u.id, u.email, u.display_name, u.is_active, u.created_at,
+               r.role, r.scope_states
+        FROM app_user u LEFT JOIN app_role r ON r.user_id = u.id
+        {where}
+        ORDER BY u.id, r.id
+    ) x ORDER BY x.email
+"""
+
+
+class UserCreate(BaseModel):
+    email: str
+    display_name: str | None = None
+    role: str
+    scope_states: list[str] | None = None
+
+
+class UserUpdate(BaseModel):
+    display_name: str | None = None
+    role: str
+    scope_states: list[str] | None = None
+    is_active: bool = True
+
+
+def _users(cur, user_id: int | None = None) -> list[dict]:
+    where = "WHERE u.id = %s" if user_id is not None else ""
+    cur.execute(USER_SELECT.format(where=where), (user_id,) if user_id is not None else ())
+    return cur.fetchall()
+
+
+def _user_json(row: dict) -> dict:
+    """Nguoi dung dang JSON cho audit_log — before/after doc duoc bang mat."""
+    return {k: row.get(k) for k in ("email", "display_name", "role", "scope_states", "is_active")}
+
+
+def _clean_role(role: str, scope: list[str] | None) -> tuple[str, list[str] | None]:
+    if role not in ROLES:
+        raise HTTPException(422, f"vai tro phai la mot trong: {', '.join(ROLES)}")
+    states = sorted({s.strip().upper() for s in (scope or []) if s and s.strip()})
+    if role != "analyst":
+        # Team lead va admin khong gioi han bang. Giu NULL cho khoi hieu nham.
+        return role, None
+    if not states:
+        raise HTTPException(422, "analyst phai duoc gan it nhat mot bang — "
+                                 "de trong nghia la khong gioi han pham vi")
+    return role, states
+
+
+def _write_role(cur, user_id: int, role: str, states: list[str] | None) -> None:
+    """Thay the toan bo vai tro cua mot nguoi. Xem ghi chu dau muc."""
+    cur.execute("DELETE FROM app_role WHERE user_id = %s", (user_id,))
+    cur.execute("INSERT INTO app_role (user_id, role, scope_states) VALUES (%s, %s, %s)",
+                (user_id, role, json.dumps(states) if states else None))
+
+
+@app.get("/api/users")
+def list_users(p: Me) -> dict:
+    """Danh sach tai khoan cho man hinh quan tri. Chi admin — nhu ca ba
+    endpoint ghi ben duoi. Cap quyen la viec cua mot vai tro, doc xem ai
+    dang co quyen gi cung vay.
+
+    Bo chon danh tinh KHONG dung endpoint nay; no co duong rieng ben duoi.
+    """
+    p.require("admin")
+    with db() as conn, conn.cursor() as cur:
+        rows = _users(cur)
+    return {"rows": rows, "roles": list(ROLES)}
+
+
+@app.get("/api/users/switchable")
+def switchable_users(p: Me) -> dict:
+    """Danh sach cho bo chon danh tinh o goc tren ben phai — CHI che do dev.
+
+    Tach khoi /api/users vi day la hai viec khac han nhau. /api/users la
+    man hinh cap quyen: chi admin. Cai nay chi ton tai khi
+    REQUIRE_IAP=false, tuc la luc danh tinh von KHONG duoc xac thuc — ai
+    cung tu xung duoc bang header X-Dev-User, khong co quyen nao de bao ve
+    o day. Doi lai, no bat buoc phai mo cho moi vai tro: doi sang analyst
+    mot lan roi khong doi lai duoc thi ban demo coi nhu het.
+
+    Bat IAP len thi 404 — bo chon luc do cung da bi khoa, va danh sach
+    nhan su chi con di qua /api/users cua admin.
+    """
+    if settings.require_iap:
+        raise HTTPException(404, "bo chon danh tinh chi co o che do dev")
+    with db() as conn, conn.cursor() as cur:
+        rows = _users(cur)
+    # Chi nhung gi bo chon ve ra. Khong tra id, khong tra created_at —
+    # chung khong dung vao viec gi ngoai man hinh quan tri.
+    return {"rows": [{k: u[k] for k in ("email", "display_name", "role", "scope_states")}
+                     for u in rows if u["is_active"]]}
+
+
+@app.post("/api/users", status_code=201)
+def create_user(body: UserCreate, p: Me) -> dict:
+    p.require("admin")
+    email = body.email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(422, f"email khong hop le: {email or '(de trong)'}")
+    role, states = _clean_role(body.role, body.scope_states)
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM app_user WHERE lower(email) = %s", (email,))
+            if cur.fetchone():
+                raise HTTPException(409, f"da co tai khoan {email}")
+            cur.execute("""INSERT INTO app_user (email, display_name, is_active)
+                           VALUES (%s, %s, true) RETURNING id""",
+                        (email, (body.display_name or "").strip() or None))
+            uid = cur.fetchone()["id"]
+            _write_role(cur, uid, role, states)
+            row = _users(cur, uid)[0]
+            audit(cur, p.email, "user_create", "app_user", email, None, _user_json(row))
+        conn.commit()
+    return row
+
+
+@app.put("/api/users/{user_id}")
+def update_user(user_id: int, body: UserUpdate, p: Me) -> dict:
+    """Sua ten hien thi, vai tro, pham vi, bat/tat. Email khong doi duoc."""
+    p.require("admin")
+    role, states = _clean_role(body.role, body.scope_states)
+
+    with db() as conn:
+        with conn.cursor() as cur:
+            found = _users(cur, user_id)
+            if not found:
+                raise HTTPException(404, f"khong co tai khoan {user_id}")
+            before = found[0]
+            # Tu ha quyen chinh minh la mot cu bam khong go lai duoc: mat
+            # quyen admin thi mat luon man hinh nay. Admin khac van lam duoc.
+            if before["email"] == p.email and (role != "admin" or not body.is_active):
+                raise HTTPException(409, "khong tu ha quyen hoac tu vo hieu hoa chinh minh — "
+                                         "nho mot admin khac lam")
+            cur.execute("""UPDATE app_user SET display_name = %s, is_active = %s
+                           WHERE id = %s""",
+                        ((body.display_name or "").strip() or None, body.is_active, user_id))
+            _write_role(cur, user_id, role, states)
+            row = _users(cur, user_id)[0]
+            audit(cur, p.email, "user_update", "app_user", before["email"],
+                  _user_json(before), _user_json(row))
+        conn.commit()
+    return row
+
+
+@app.delete("/api/users/{user_id}")
+def delete_user(user_id: int, p: Me) -> dict:
+    """Xoa han tai khoan (app_role xoa theo CASCADE).
+
+    Muon giu dau vet nguoi nay tung la ai thi TAT (is_active=false) chu
+    dung xoa — xem docs/runbook.md. Ban ghi truoc khi xoa nam trong
+    audit_log, con ticket va ban ky van giu nguyen email vi chung luu chuoi.
+    """
+    p.require("admin")
+    with db() as conn:
+        with conn.cursor() as cur:
+            found = _users(cur, user_id)
+            if not found:
+                raise HTTPException(404, f"khong co tai khoan {user_id}")
+            before = found[0]
+            if before["email"] == p.email:
+                raise HTTPException(409, "khong tu xoa chinh minh")
+            cur.execute("DELETE FROM app_user WHERE id = %s", (user_id,))
+            audit(cur, p.email, "user_delete", "app_user", before["email"],
+                  _user_json(before), None)
+        conn.commit()
+    return {"id": user_id, "email": before["email"]}

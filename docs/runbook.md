@@ -209,7 +209,16 @@ gán `roles/iap.httpsResourceAccessor`, hoặc thêm vào `iap_members` trong
 `infra/terraform.tfvars` rồi `terraform apply`.
 
 **Lớp 2 — vào rồi làm được gì.** Quyền nghiệp vụ nằm trong Postgres, không
-nằm trong IAM, vì nó đổi thường xuyên hơn nhiều:
+nằm trong IAM, vì nó đổi thường xuyên hơn nhiều.
+
+Từ P12 làm thẳng trong ứng dụng: tab **Người dùng** → *Thêm người dùng*.
+Đây là cách nên dùng — nó ghi `audit_log`, và chặn sẵn mấy chỗ dễ sai
+(analyst không có bang nào, tự hạ quyền chính mình).
+
+Cả màn hình này **chỉ admin vào được**, kể cả để xem: `team_lead` gõ thẳng
+`/users` sẽ nhận 403 kèm một câu giải thích.
+
+Vẫn làm bằng SQL được, khi chưa có admin nào để bấm:
 
 ```sql
 INSERT INTO app_user (email, display_name) VALUES ('ten@cty.com', 'Tên hiển thị');
@@ -217,6 +226,10 @@ INSERT INTO app_user (email, display_name) VALUES ('ten@cty.com', 'Tên hiển t
 INSERT INTO app_role (user_id, role, scope_states)
 SELECT id, 'analyst', '["TX"]'::json FROM app_user WHERE email = 'ten@cty.com';
 ```
+
+Một người **một vai trò**: màn hình chỉ ghi một dòng `app_role` mỗi người và
+sửa vai trò là thay thế cả bộ. Chèn tay dòng thứ hai thì màn hình chỉ hiện
+một trong hai, và lần sửa kế tiếp sẽ xoá dòng còn lại.
 
 | Vai trò | Làm được gì |
 |---|---|
@@ -228,8 +241,9 @@ SELECT id, 'analyst', '["TX"]'::json FROM app_user WHERE email = 'ten@cty.com';
 `scope_states` để `NULL` nghĩa là **không giới hạn bang** — cân nhắc kỹ, đây
 là thứ dễ cấp nhầm nhất.
 
-**Bỏ một người:** đặt `is_active = false` trong `app_user` thay vì xoá. Xoá
-sẽ làm mất dấu vết trong `audit_log` khi truy ngược sau này.
+**Bỏ một người:** bỏ đánh dấu *Tài khoản đang dùng* ở phần Sửa (tức là
+`is_active = false`) thay vì xoá. Xoá sẽ làm mất dấu vết trong `audit_log`
+khi truy ngược sau này — nút *Xoá* có, nhưng để dọn tài khoản gõ nhầm.
 
 Cloud SQL chỉ có private IP nên chạy SQL phải từ trong VPC:
 

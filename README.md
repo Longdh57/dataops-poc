@@ -298,6 +298,11 @@ Từ P6, vi phạm luật KHÔNG còn khóa cổng — xem mục [Quy trình ch�
 | DELETE | `/api/rules/{id}?expected_version=` | xoá luật; vẫn còn trong snapshot cũ (P10) |
 | POST | `/api/rules/preview` | chạy thử SQL của luật: cột, số dòng, 20 dòng mẫu (P10) |
 | POST | `/api/rules/run-qc` | kích hoạt QC Runner ngay, `FORCE_QC=1` (P10) |
+| GET | `/api/users` | danh sách tài khoản + vai trò + phạm vi, **chỉ admin** (P12) |
+| GET | `/api/users/switchable` | danh sách cho bộ chọn danh tính; chỉ tồn tại khi `REQUIRE_IAP=false` (P12) |
+| POST | `/api/users` | tạo tài khoản, chỉ admin (P12) |
+| PUT | `/api/users/{id}` | sửa tên, vai trò, phạm vi, bật/tắt. Email bất biến (P12) |
+| DELETE | `/api/users/{id}` | xoá hẳn; vết còn trong `audit_log` (P12) |
 | POST | `/api/release` | ký bản số liệu (team_lead), kèm phiếu duyệt |
 | POST | `/api/exports` | 202 + job_id |
 
@@ -341,6 +346,9 @@ IAP chưa bật được nên `REQUIRE_IAP=false`, danh tính lấy từ header
 `X-Dev-User`. Giao diện có bộ chọn danh tính để thấy phân quyền hoạt động:
 
 https://dataops-dev.3ddesigns.xyz/?as=analyst.tx@dataops.test
+
+Từ P12, danh sách trong bộ chọn đọc từ `/api/users` chứ không còn gõ cứng
+trong mã nguồn — tài khoản vừa tạo ở màn hình **Người dùng** thử được ngay.
 
 Bật IAP lên thì `REQUIRE_IAP` tự chuyển sang true (buộc theo `iap_enabled`
 trong Terraform), danh tính đến từ JWT Google ký và không giả được.
@@ -772,6 +780,31 @@ bộ luật mới có hiệu lực ở lần QC kế tiếp, không deploy gì.
 Deploy lần đầu: `alembic upgrade head` (job `dataops-migrate`) **trước** khi
 deploy image jobs mới — QC Runner mới báo lỗi rõ và thoát nếu chưa có bảng
 `qc_rule`, không chạy với bộ luật rỗng.
+
+## Người dùng & phân quyền (P12)
+
+Trước P12, thêm một người là mở psql gõ hai câu INSERT theo
+[docs/runbook.md](docs/runbook.md). Giờ admin làm trong tab **Người dùng**.
+
+| | |
+|---|---|
+| Bảng | Không thêm bảng nào: vẫn `app_user` + `app_role` có từ P3 |
+| API | 4 endpoint `/api/users` trong bảng Endpoint ở trên — **cả đọc lẫn ghi đều chỉ admin**. Cấp quyền là việc của một vai trò, nên xem ai đang có quyền gì cũng vậy |
+| Bộ chọn danh tính | Đi đường riêng `/api/users/switchable`, **không** dùng `/api/users`. Nó chỉ tồn tại khi `REQUIRE_IAP=false` — lúc đó danh tính vốn chưa được xác thực, ai cũng tự xưng được bằng header `X-Dev-User`, nên ở đó không có quyền nào để bảo vệ. Đổi lại nó buộc phải mở cho mọi vai trò: đổi sang analyst một lần rồi không đổi lại được thì bản demo coi như hết. Chỉ trả 4 trường và bỏ qua tài khoản đã tắt. Bật IAP lên thì 404 |
+| Một người một vai trò | `app_role` chứa được nhiều dòng, nhưng màn hình chỉ ghi một. Sửa vai trò là **thay thế cả bộ**, không cộng dồn — cộng dồn là cách dễ nhất để một analyst giữ lại phạm vi cũ sau khi bị hạ quyền |
+| Analyst phải có ít nhất một bang | `scope_states` rỗng nghĩa là **không giới hạn** (xem `authz.scope_clause`), nên "quên chọn" sẽ cấp nhầm toàn bộ dữ liệu chứ không phải cấp thiếu. Chặn ở cả form lẫn server (422) |
+| Email bất biến | Nó là khoá định danh người gọi và được lưu dạng chuỗi trong `audit_log.actor`, `ticket.created_by`, `signed_version.signed_by` — không có khoá ngoại nào để đổi tên theo |
+| Không tự bắn vào chân | Admin không tự hạ quyền, tự tắt hay tự xoá chính mình được (409). Admin khác thì làm được |
+| Xoá vs tắt | Xoá là xoá hẳn (`app_role` xoá theo CASCADE). Muốn giữ dấu vết thì bỏ đánh dấu "Tài khoản đang dùng" — runbook vẫn khuyên cách này |
+| Dấu vết | `user_create` / `user_update` / `user_delete` vào `audit_log`, có cả `before` lẫn `after` |
+
+Vai trò cấp được ở màn hình này là `admin`, `team_lead`, `analyst`. Vai trò
+`sale` vẫn chạy ở API (`POST /api/versions/{id}/sent`) nhưng đã gỡ khỏi giao
+diện từ trước; tài khoản còn giữ nó thì màn hình cảnh báo trước khi lưu đè.
+
+Test: `apps/api/tests/test_users.py` — 18 bài, trong đó bài cuối gọi
+`/api/facts` để chắc rằng phạm vi vừa cấp **có hiệu lực thật** ở tầng dữ
+liệu chứ không chỉ hiện đẹp trên màn hình.
 
 ## Terraform
 

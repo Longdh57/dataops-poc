@@ -337,7 +337,7 @@ table.t tr:last-child td { border-bottom: 0; }
   color: var(--muted);
   margin-bottom: 4px;
 }
-.rule-form .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+.hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
 .rule-form input[type="text"] { width: 100%; }
 .rule-form textarea.sql { font-family: var(--mono); font-size: 12px; line-height: 1.5; min-height: 190px; }
 .scope-grid { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; }
@@ -403,3 +403,21 @@ table.t tr:last-child td { border-bottom: 0; }
 }
 .langswitch-btn:hover { background: var(--surface2); }
 .langswitch-btn[data-on="1"] { background: var(--accent-soft); color: var(--accent); }
+
+/* ------------------------------------------------------- bo chon danh tinh */
+
+/* Mot dong = mot nguoi: ten, email, roi vai tro + pham vi. Bay du ca ba
+   vi doi nham sang tai khoan khac la kieu nham im lang nhat — man hinh
+   van chay, chi la thieu du lieu. */
+.identity-pick {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  margin-bottom: 2px;
+  background: transparent;
+  color: var(--ink2);
+}
+.identity-pick[data-on="1"] { background: var(--accent-soft); color: var(--accent); }
+.identity-pick-mail { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.identity-pick-role { display: flex; gap: 4px; margin-top: 4px; }

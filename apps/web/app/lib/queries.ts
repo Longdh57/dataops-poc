@@ -7,7 +7,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
-import type { Gate, Me, Options, RulesCatalog, Summary, Ticket, VersionInfo } from "./types";
+import type {
+  Gate, Me, Options, RulesCatalog, Summary, SwitchableUser, Ticket, UsersRes,
+  VersionInfo,
+} from "./types";
 
 export const useMe = () =>
   useQuery({ queryKey: ["me"], queryFn: () => gw<Me>("/me"), staleTime: 60_000 });
@@ -60,4 +63,26 @@ export const useRules = (version?: number | null) =>
     queryFn: () => gw<RulesCatalog>(`/rules${qs({ version: version ?? undefined })}`),
     // Snapshot khong bao gio doi. Ban hien tai thi doi khi co nguoi sua.
     staleTime: version ? Infinity : 60_000,
+  });
+
+/** Danh sach tai khoan cho man hinh Nguoi dung. CHI ADMIN goi duoc — vai
+ *  tro khac nhan 403, va trang hien thang loi do chu khong giau di. */
+export const useUsers = () =>
+  useQuery({
+    queryKey: ["users"],
+    queryFn: () => gw<UsersRes>("/users"),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+/** Danh sach cho bo chon danh tinh — duong rieng, mo cho moi vai tro
+ *  nhung chi ton tai o che do dev. `enabled` tat han khi IAP da bat, luc
+ *  do endpoint tra 404 va bo chon cung dang bi khoa. */
+export const useSwitchableUsers = (enabled = true) =>
+  useQuery({
+    queryKey: ["users", "switchable"],
+    queryFn: () => gw<{ rows: SwitchableUser[] }>("/users/switchable"),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
   });

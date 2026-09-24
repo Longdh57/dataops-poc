@@ -39,6 +39,7 @@ export const vi = {
   "nav.versions": "Phiên bản",
   "nav.requests": "Yêu cầu dữ liệu",
   "nav.agent": "AI Agent",
+  "nav.users": "Người dùng",
   "shell.brand": "Data Operations",
   "shell.badgeBlocking": "{n} ticket đang chặn phát hành",
   "shell.badgeGateLocked": "cổng phát hành đang khoá",
@@ -55,11 +56,9 @@ export const vi = {
   // ------------------------------------------------------------ danh tinh
   "identity.fromIap": "Danh tính đến từ IAP",
   "identity.switchDev": "Đổi danh tính (chế độ dev)",
+  "identity.empty": "Chưa có tài khoản nào đang dùng.",
+  "identity.manage": "Quản lý người dùng",
   "identity.signInAs": "Đăng nhập với tư cách",
-  "identity.user.admin": "Admin — toàn quyền",
-  "identity.user.lead": "Team Lead — ký phát hành",
-  "identity.user.analystTx": "Analyst — chỉ Texas",
-  "identity.user.analystCa": "Analyst — chỉ California",
 
   // ---------------------------------------------------------- do tuoi du lieu
   "strip.run": "Lần nạp",
@@ -441,6 +440,49 @@ export const vi = {
   "agent.placeholder": "Hỏi về vi phạm, ticket, ưu tiên xử lý…",
   "agent.send": "Gửi",
   "agent.newChat": "Cuộc trò chuyện mới",
+
+  // ------------------------------------------------ man nguoi dung & quyen
+  "users.title": "Người dùng & phân quyền",
+  "users.sub":
+    "Quyền nghiệp vụ nằm trong cơ sở dữ liệu của ứng dụng, không nằm trong IAM — IAM chỉ quyết định ai vào được cổng. Tài khoản tạo ở đây xuất hiện ngay trong bộ chọn danh tính ở góc trên bên phải.",
+  "users.add": "Thêm người dùng",
+  "users.edit": "Sửa",
+  "users.delete": "Xoá",
+  "users.loading": "người dùng",
+  "users.empty": "Chưa có tài khoản nào.",
+  "users.you": "bạn",
+  "users.active": "đang dùng",
+  "users.inactive": "đã tắt",
+  "users.adminOnly":
+    "Chỉ admin mới mở được màn hình này. Cấp quyền là việc của một vai trò, nên xem ai đang có quyền gì cũng vậy.",
+  "users.cantDeleteSelf": "Không tự xoá chính mình",
+  "users.col.name": "Tên hiển thị",
+  "users.col.email": "Email",
+  "users.col.role": "Vai trò",
+  "users.col.scope": "Phạm vi",
+  "users.col.state": "Trạng thái",
+  "users.col.createdAt": "Tạo lúc",
+  "users.editTitle": "Sửa {email}",
+  "users.deleteTitle": "Xoá tài khoản",
+  "users.deleteWarn":
+    "Xoá hẳn {email} khỏi hệ thống. Người này sẽ không gọi được API nữa. Muốn giữ dấu vết thì mở phần Sửa rồi bỏ đánh dấu “Tài khoản đang dùng” thay vì xoá.",
+  "users.role.admin": "Toàn quyền, không giới hạn bảng",
+  "users.role.team_lead": "Ký phát hành, nạp lại từ nguồn, sửa bộ luật QC",
+  "users.role.analyst": "Xem và mở ticket trong phạm vi bảng được gán",
+  "users.form.email": "Email",
+  "users.form.emailHint": "Đây là danh tính người gọi API — nhập đúng email đăng nhập.",
+  "users.form.emailLocked": "Email không đổi được: nó là khoá định danh nằm trong nhật ký và các bản ký.",
+  "users.form.name": "Tên hiển thị",
+  "users.form.role": "Vai trò",
+  "users.form.unknownRole":
+    "Tài khoản này đang giữ vai trò “{role}”, không còn trong danh sách cấp được. Lưu sẽ thay bằng vai trò đang chọn.",
+  "users.form.scope": "Bảng được xem",
+  "users.form.scopeHint":
+    "Chọn ít nhất một bảng. Để trống không phải là “chưa cấp gì” mà là không giới hạn — máy chủ sẽ từ chối.",
+  "users.form.scopeAll": "Vai trò này không giới hạn bảng.",
+  "users.form.active": "Tài khoản đang dùng",
+  "users.form.save": "Lưu",
+  "users.form.saving": "Đang lưu…",
 
   // ---------------------------------------------------------------- AG Grid
   "grid.noRows": "Không có dòng nào",
