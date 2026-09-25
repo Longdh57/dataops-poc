@@ -6,12 +6,15 @@ Phan API/endpoint thi mock `agent.chat()` de khong goi Vertex AI that trong
 test — chi kiem plumbing: dang nhap bat buoc, response tra dung session_id.
 """
 
+import uuid
+
 import psycopg
 from psycopg.rows import dict_row
 
 from conftest import ADMIN, TX, as_user
 
 from app import main as main_module
+from app.db import db
 from app.agent import sql_gen
 from app.agent.queries import Scope, list_open_tickets, list_qc_exceptions
 
@@ -310,3 +313,74 @@ def test_agent_usage_chi_danh_cho_team_lead_va_admin(client, monkeypatch):
     # den ham doc Monitoring, khong thi bam mai van ra cache 5 phut cu.
     assert client.get("/api/agent/usage?force=true", headers=as_user(ADMIN)).status_code == 200
     assert da_goi == [False, True]
+
+
+def test_token_log_gom_ca_hai_duong_goi_trong_mot_luot():
+    """Mot luot chat goi Vertex AI hai duong (ADK Runner + sql_gen) — ca
+    hai phai roi vao cung mot so tam, neu khong so cua phien se thieu."""
+    from app.agent import token_log
+
+    class UsageGiaLap:  # dung hinh dang cua usageMetadata trong google-genai
+        prompt_token_count = 10
+        candidates_token_count = 4
+        thoughts_token_count = 6
+
+    with token_log.collecting() as bucket:
+        token_log.add_response("gemini-2.5-flash", UsageGiaLap())  # ADK Runner
+        token_log.add("gemini-2.5-flash", 3, 1)                    # sql_gen
+
+    # Token "suy nghi" tinh tien nhu token ra nen phai gop vao output: 4 + 6.
+    assert bucket == {"gemini-2.5-flash": [13, 11]}
+
+
+def test_token_log_ngoai_luot_chat_thi_im_lang():
+    """Goi Vertex AI ngoai mot luot chat (job nen, test) khong duoc no —
+    khong ai phai nho mo context truoc khi goi model."""
+    from app.agent import token_log
+
+    token_log.add("gemini-2.5-flash", 5, 5)
+    token_log.add_response("gemini-2.5-flash", None)
+
+
+def test_session_usage_chi_tra_ve_phien_cua_chinh_nguoi_hoi():
+    """Dan session_id cua nguoi khac vao URL chi ra bang rong."""
+    from app.agent import token_log
+
+    phien = f"test-{uuid.uuid4().hex[:12]}"
+    token_log.save(phien, ADMIN, {"gemini-2.5-flash": [1000, 200]})
+    try:
+        cua_toi = token_log.session_usage(phien, ADMIN)
+        assert cua_toi["input_tokens"] == 1000
+        assert cua_toi["output_tokens"] == 200
+        assert cua_toi["total_tokens"] == 1200
+        # 1000 * 0.30e-6 + 200 * 2.50e-6
+        assert round(cua_toi["cost_usd"], 8) == round(0.0003 + 0.0005, 8)
+        assert cua_toi["by_model"][0]["model"] == "gemini-2.5-flash"
+
+        cua_nguoi_khac = token_log.session_usage(phien, TX)
+        assert cua_nguoi_khac["total_tokens"] == 0
+        assert cua_nguoi_khac["by_model"] == []
+    finally:
+        with db() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM agent_token_usage WHERE session_id = %s", (phien,))
+
+
+def test_session_usage_endpoint_mo_cho_moi_vai_tro(client):
+    """Khac so ca thang: day la chi phi cuoc tro chuyen cua chinh nguoi hoi,
+    analyst cung duoc xem phan cua minh."""
+    from app.agent import token_log
+
+    phien = f"test-{uuid.uuid4().hex[:12]}"
+    token_log.save(phien, TX, {"gemini-2.5-flash": [7, 3]})
+    try:
+        res = client.get(f"/api/agent/usage/session/{phien}", headers=as_user(TX))
+        assert res.status_code == 200
+        assert res.json()["total_tokens"] == 10
+
+        # Cung URL, nguoi khac hoi: khong 403 ma don gian la khong co gi.
+        khac = client.get(f"/api/agent/usage/session/{phien}", headers=as_user(ADMIN))
+        assert khac.status_code == 200
+        assert khac.json()["total_tokens"] == 0
+    finally:
+        with db() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM agent_token_usage WHERE session_id = %s", (phien,))

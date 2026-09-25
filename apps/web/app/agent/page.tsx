@@ -16,13 +16,16 @@
 // (a) chuyen tab/tai lai trang van thay hoi thoai cu, va (b) doi danh tinh
 // trong cung trinh duyet KHONG lam lo hoi thoai cua nguoi truoc.
 
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
 import { useFmt, useI18n } from "@/app/i18n/context";
 import type { MessageKey } from "@/app/i18n/translate";
 import { post } from "@/app/lib/api";
-import { useAgentUsage, useMe, useRefreshAgentUsage } from "@/app/lib/queries";
+import {
+  AGENT_SESSION_USAGE_KEY, useAgentSessionUsage, useAgentUsage, useMe, useRefreshAgentUsage,
+} from "@/app/lib/queries";
+import type { TokenByModel } from "@/app/lib/types";
 import { ErrBox, Modal } from "@/app/ui/bits";
 
 type Turn = { role: "user" | "agent"; text: string };
@@ -46,114 +49,172 @@ function fmtCost(usd: number): string {
   return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
 }
 
-/** O chi phi Vertex AI thang nay — bam vao de mo bang chi tiet theo model.
- *
- *  IM LANG BIEN MAT khi khong doc duoc — vai tro khong phai team_lead/
- *  admin (403), thieu quyen monitoring.viewer, hay chay local chua cau
- *  hinh project. Day chi la o phu: no khong duoc phep chen mot hop loi
- *  vao man hinh chat, va cang khong duoc chan viec hoi.
- *
- *  Truoc day moi gioi han cua con so nam trong tooltip; gio chuyen het vao
- *  modal, vi tooltip dai khong ai doc het va khong bam duoc nut nao. */
-function UsagePill() {
+/** Bang token tach theo model + dong tong. Dung chung cho ca so cua phien
+ *  chat lan so ca thang — hai khoi phai doc giong het nhau, khac moi nguon
+ *  du lieu. */
+function TokenTable({
+  rows, input, output, cost,
+}: {
+  rows: TokenByModel[];
+  input: number;
+  output: number;
+  cost: number;
+}) {
   const { t } = useI18n();
   const { num } = useFmt();
-  const { data } = useAgentUsage();
-  const [open, setOpen] = useState(false);
 
-  // Pill bien mat khi khong doc duoc, NHUNG modal dang mo thi giu lai: bam
-  // "lay lai so moi" ma Monitoring loi thi nguoi dung phai thay ly do, chu
-  // khong phai hop tu dong dong lai nhu chua co gi xay ra.
-  if (!data?.available && !open) return null;
+  return (
+    <table className="t">
+      <thead>
+        <tr>
+          <th>{t("agent.usage.col.model")}</th>
+          <th className="num">{t("agent.usage.col.input")}</th>
+          <th className="num">{t("agent.usage.col.output")}</th>
+          <th className="num">{t("agent.usage.col.cost")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.model}>
+            <td className="mono">{r.model}</td>
+            <td className="num">{num(r.input_tokens)}</td>
+            <td className="num">{num(r.output_tokens)}</td>
+            {/* cost_usd = null: model chua co trong bang gia. Hien dau gach
+                chu KHONG hien $0.00 — $0.00 la noi doi. */}
+            <td className="num">{r.cost_usd === null ? "—" : fmtCost(r.cost_usd)}</td>
+          </tr>
+        ))}
+        <tr>
+          <td><b>{t("agent.usage.total")}</b></td>
+          <td className="num"><b>{num(input)}</b></td>
+          <td className="num"><b>{num(output)}</b></td>
+          <td className="num"><b>{fmtCost(cost)}</b></td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** O token cua PHIEN CHAT dang mo — bam vao de mo bang chi tiet.
+ *
+ *  Truoc day o nay hien so ca thang doc tu Cloud Monitoring; so do tre 1-2
+ *  phut va la cua ca project, nen hoi xong nhin vao khong thay gi doi.
+ *  Gio o nay dem dung cuoc tro chuyen truoc mat, lay tu `usageMetadata`
+ *  ung dung tu ghi — doi ngay sau moi cau hoi. So ca thang van con, nhung
+ *  lui vao trong modal.
+ *
+ *  KHONG bien mat khi thieu quyen monitoring: so cua phien khong phu thuoc
+ *  quyen do, ai chat cung thay duoc phan minh vua ton. */
+function UsagePill({ sessionId }: { sessionId: string | null }) {
+  const { t } = useI18n();
+  const { num } = useFmt();
+  const { data } = useAgentSessionUsage(sessionId);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
-      {data?.available ? (
-        <button className="pill" title={t("agent.usage.open")} onClick={() => setOpen(true)}>
-          {t("agent.usage.pill", {
-            tokens: num(data.total_tokens),
-            cost: fmtCost(data.cost_usd),
-          })}
-        </button>
-      ) : null}
-      {open ? <UsageModal onClose={() => setOpen(false)} /> : null}
+      <button className="pill" title={t("agent.usage.open")} onClick={() => setOpen(true)}>
+        {t("agent.usage.pill", {
+          tokens: num(data?.total_tokens ?? 0),
+          cost: fmtCost(data?.cost_usd ?? 0),
+        })}
+      </button>
+      {open ? <UsageModal sessionId={sessionId} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
 
-/** Chi tiet token/chi phi: tach theo model, tong tien, va nut doc lai so
- *  tu Vertex AI.
+/** Chi tiet token: khoi tren la phien chat dang mo, khoi duoi la ca project
+ *  thang nay. Hai khoi doc hai NGUON khac nhau va phai noi ro dieu do:
  *
- *  Doc lai chinh query cua pill (cung queryKey) nen mo hop KHONG ban them
- *  mot request nao; chi nut "lay lai so moi" moi goi API, voi force=true
- *  de bo qua cache 5 phut ben server.
+ *  - Phien: bang agent_token_usage cua chinh ung dung, ghi tu `usageMetadata`
+ *    trong response Vertex AI. Co ngay sau moi luot chat.
+ *  - Thang: metric Cloud Monitoring, tre 1-2 phut va gop moi lenh goi Vertex
+ *    AI trong project. Khoi nay im lang vang mat voi vai tro khong doc duoc
+ *    (analyst nhan 403) — luc do modal chi con khoi phien.
  *
- *  Dong "do tre" la bat buoc chu khong phai trang tri: metric token cua
- *  Vertex AI ve sau 1-2 phut, nen vua chat xong bam vao day thay so chua
- *  doi la binh thuong — khong noi ro thi nguoi dung tuong app dem sai. */
-function UsageModal({ onClose }: { onClose: () => void }) {
+ *  Mo hop khong ban them request nao: ca hai dung lai query cua pill. */
+function UsageModal({ sessionId, onClose }: { sessionId: string | null; onClose: () => void }) {
   const { t } = useI18n();
-  const { num, dt } = useFmt();
-  const { data } = useAgentUsage();
+  const { dt } = useFmt();
+  const session = useAgentSessionUsage(sessionId);
+  const monthQuery = useAgentUsage();
   const refresh = useRefreshAgentUsage();
+
+  // Loi (403 vi vai tro, hay API chet) thi GIAU han khoi thang, khong dung
+  // `data` con lai trong cache: doi danh tinh tu admin sang analyst ma van
+  // ve so cu la hien nham so cua nguoi truoc.
+  const month = monthQuery.isError ? undefined : monthQuery.data;
+
+  // Mot nut lam moi CA HAI khoi — nguoi dung khong can biet so nao den tu
+  // nguon nao moi bam dung cho.
+  const busy = refresh.isPending || session.isFetching;
+  const refreshAll = () => {
+    void session.refetch();
+    if (month) refresh.mutate();
+  };
 
   return (
     <Modal title={t("agent.usage.modal.title")} onClose={onClose}>
-      {data?.available ? (
+      <h3 className="modal-sec" style={{ marginTop: 0 }}>{t("agent.usage.session.title")}</h3>
+      {session.data && session.data.by_model.length ? (
         <>
-          <p className="sub" style={{ marginBottom: 10 }}>
-            {t("agent.usage.modal.period", {
-              from: data.period_start.slice(0, 10),
-              asOf: dt(data.as_of),
-            })}
-          </p>
-          {data.by_model.length ? (
-            <table className="t">
-              <thead>
-                <tr>
-                  <th>{t("agent.usage.col.model")}</th>
-                  <th className="num">{t("agent.usage.col.input")}</th>
-                  <th className="num">{t("agent.usage.col.output")}</th>
-                  <th className="num">{t("agent.usage.col.cost")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.by_model.map((r) => (
-                  <tr key={r.model}>
-                    <td className="mono">{r.model}</td>
-                    <td className="num">{num(r.input_tokens)}</td>
-                    <td className="num">{num(r.output_tokens)}</td>
-                    {/* cost_usd = null: model chua co trong bang gia. Hien
-                        dau gach chu KHONG hien $0.00 — $0.00 la noi doi. */}
-                    <td className="num">{r.cost_usd === null ? "—" : fmtCost(r.cost_usd)}</td>
-                  </tr>
-                ))}
-                <tr>
-                  <td><b>{t("agent.usage.total")}</b></td>
-                  <td className="num"><b>{num(data.input_tokens)}</b></td>
-                  <td className="num"><b>{num(data.output_tokens)}</b></td>
-                  <td className="num"><b>{fmtCost(data.cost_usd)}</b></td>
-                </tr>
-              </tbody>
-            </table>
-          ) : (
-            <p className="sub">{t("agent.usage.empty")}</p>
-          )}
-          {data.unpriced_models.length ? (
+          <TokenTable
+            rows={session.data.by_model}
+            input={session.data.input_tokens}
+            output={session.data.output_tokens}
+            cost={session.data.cost_usd}
+          />
+          {session.data.unpriced_models.length ? (
             <p className="hint tone-warn">
-              {t("agent.usage.unpriced", { models: data.unpriced_models.join(", ") })}
+              {t("agent.usage.unpriced", { models: session.data.unpriced_models.join(", ") })}
             </p>
           ) : null}
-          <p className="hint">{t("agent.usage.delay")}</p>
-          <p className="hint">{t("agent.usage.scope")}</p>
+          <p className="hint">{t("agent.usage.session.fresh")}</p>
         </>
       ) : (
-        <p className="sub">{t("agent.usage.unavailable", { reason: data?.reason ?? "" })}</p>
+        <p className="sub">{t("agent.usage.session.none")}</p>
       )}
+
+      {month ? (
+        <>
+          <h3 className="modal-sec">{t("agent.usage.month.title")}</h3>
+          {month.available ? (
+            <>
+              <p className="sub" style={{ marginBottom: 10 }}>
+                {t("agent.usage.modal.period", {
+                  from: month.period_start.slice(0, 10),
+                  asOf: dt(month.as_of),
+                })}
+              </p>
+              {month.by_model.length ? (
+                <TokenTable
+                  rows={month.by_model}
+                  input={month.input_tokens}
+                  output={month.output_tokens}
+                  cost={month.cost_usd}
+                />
+              ) : (
+                <p className="sub">{t("agent.usage.empty")}</p>
+              )}
+              {month.unpriced_models.length ? (
+                <p className="hint tone-warn">
+                  {t("agent.usage.unpriced", { models: month.unpriced_models.join(", ") })}
+                </p>
+              ) : null}
+              <p className="hint">{t("agent.usage.delay")}</p>
+              <p className="hint">{t("agent.usage.scope")}</p>
+            </>
+          ) : (
+            <p className="sub">{t("agent.usage.unavailable", { reason: month.reason })}</p>
+          )}
+        </>
+      ) : null}
+
       <ErrBox error={refresh.error} />
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
-        <button className="btn" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
-          {refresh.isPending ? t("agent.usage.refreshing") : t("agent.usage.refresh")}
+        <button className="btn" disabled={busy} onClick={refreshAll}>
+          {busy ? t("agent.usage.refreshing") : t("agent.usage.refresh")}
         </button>
         <button className="btn btn-primary" onClick={onClose}>{t("common.close")}</button>
       </div>
@@ -164,6 +225,7 @@ function UsageModal({ onClose }: { onClose: () => void }) {
 export default function AgentPage() {
   const { t } = useI18n();
   const { data: me } = useMe();
+  const qc = useQueryClient();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -216,6 +278,10 @@ export default function AgentPage() {
       setTurns((t) => [...t, { role: "user", text: message }, { role: "agent", text: res.reply }]);
       setSessionId(res.session_id);
       setInput("");
+      // Token cua luot vua roi da nam trong DB truoc khi response nay ve,
+      // nen doc lai la ra so dung ngay — day la khac biet lon nhat so voi
+      // so ca thang (Cloud Monitoring con tre 1-2 phut).
+      qc.invalidateQueries({ queryKey: AGENT_SESSION_USAGE_KEY });
       queueMicrotask(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }));
     },
   });
@@ -250,7 +316,7 @@ export default function AgentPage() {
           <p className="sub">{t("agent.sub")}</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <UsagePill />
+          <UsagePill sessionId={sessionId} />
           {turns.length > 0 ? (
             <button className="btn btn-sm" onClick={newConversation}>
               {t("agent.newChat")}

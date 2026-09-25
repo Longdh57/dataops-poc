@@ -372,3 +372,38 @@ class AuditLog(Base):
         Index("ix_audit_created", "created_at"),
         Index("ix_audit_entity", "entity", "entity_key"),
     )
+
+
+class AgentTokenUsage(Base):
+    """Token cua tung luot chat AI Agent, ghi tu `usageMetadata` ma Vertex
+    AI tra ve NGAY TRONG RESPONSE.
+
+    Vi sao can bang nay du da co o chi phi thang (app/agent/usage.py): so
+    kia doc tu Cloud Monitoring, la cua CA PROJECT va khong mang nhan nao
+    cua ung dung, nen khong tra loi duoc "phien chat nay ton bao nhieu".
+    No con tre 1-2 phut. `usageMetadata` thi dung cua tung lenh goi va co
+    ngay khi response ve.
+
+    Mot dong = mot MODEL trong mot luot hoi. Mot luot co the goi Vertex AI
+    hai duong — ADK Runner tra loi, va sql_gen.py dich cau hoi sang WHERE —
+    nen tach theo model de sau nay doi model mot duong van doi soat duoc.
+
+    KHONG co khoa ngoai toi phien cua ADK: bang phien do ADK tu tao va tu
+    quan schema, Alembic khong dung toi. Chi giu `session_id` dang chuoi.
+    """
+    __tablename__ = "agent_token_usage"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    user_email: Mapped[str] = mapped_column(String(320), nullable=False)
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        # Man hinh Agent doc theo dung mot phien, moi lan mo va sau MOI luot
+        # chat — thieu index nay thi moi lan la mot seq scan ca bang.
+        Index("ix_agent_token_session", "session_id"),
+        Index("ix_agent_token_user", "user_email", "created_at"),
+    )

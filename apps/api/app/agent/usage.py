@@ -8,8 +8,8 @@ so o day co hai gioi han phai noi ro voi nguoi doc, khong duoc giau:
 1. La CUA CA PROJECT. No gop ca hai duong goi Vertex AI — ADK Runner
    trong service.py va `generate_content` truc tiep trong sql_gen.py — va
    KHONG tach duoc theo nguoi hoi hay theo phien, vi metric khong mang
-   nhan nao cua ung dung. Muon tach thi phai tu ghi `usage_metadata`;
-   duong nay khong lam duoc.
+   nhan nao cua ung dung. Muon so theo tung phien chat thi doc
+   token_log.py — cho do ghi `usageMetadata` cua tung lenh goi.
 2. Tien la UOC TINH: token nhan don gia niem yet. Khong tru credit, cam
    ket chi tieu hay giam gia hop dong. Dung de canh chung "dang ton bao
    nhieu", KHONG dung de doi soat — so that nam o Cloud Billing.
@@ -52,6 +52,18 @@ PRICE_PER_TOKEN: dict[str, dict[str, float]] = {
 _CACHE_TTL = dt.timedelta(minutes=5)
 _lock = threading.Lock()
 _cache: tuple[dt.datetime, dict] | None = None
+
+
+def cost_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """USD uoc tinh theo gia niem yet. None = model chua co trong bang gia.
+
+    Dung chung voi token_log.py (so theo phien chat) de hai man hinh khong
+    bao gio lech nhau vi hai cong thuc khac nhau.
+    """
+    price = PRICE_PER_TOKEN.get(model)
+    if price is None:
+        return None
+    return input_tokens * price["input"] + output_tokens * price["output"]
 
 
 def _month_start(now: dt.datetime) -> dt.datetime:
@@ -105,13 +117,9 @@ def _summarize(series: list[dict], start: dt.datetime, now: dt.datetime) -> dict
 
     unpriced: list[str] = []
     for model, row in by_model.items():
-        price = PRICE_PER_TOKEN.get(model)
-        if price is None:
+        row["cost_usd"] = cost_of(model, row["input_tokens"], row["output_tokens"])
+        if row["cost_usd"] is None:
             unpriced.append(model)
-            row["cost_usd"] = None
-            continue
-        row["cost_usd"] = (row["input_tokens"] * price["input"]
-                           + row["output_tokens"] * price["output"])
 
     rows = sorted(by_model.values(), key=lambda r: r["model"])
     return {

@@ -303,6 +303,18 @@ table.t tr:last-child td { border-bottom: 0; }
   width: 100%;
   box-shadow: 0 18px 48px rgba(19, 26, 33, 0.24);
 }
+/* Tieu de muc nho trong modal (hop token co hai muc: phien chat va ca
+   thang). h3 chua co style nao trong app nen dat rieng o day. */
+.modal-sec {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  margin: 18px 0 7px;
+}
+
 /* Hop chua code (SQL, YAML): rong hon va tu cuon doc — noi dung dai bao
    nhieu cung khong day nut dong ra ngoai man hinh. */
 .modal-wide { max-width: 880px; max-height: 86vh; overflow-y: auto; }

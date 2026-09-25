@@ -950,6 +950,23 @@ def agent_usage(p: Me, force: bool = False) -> dict:
     return agent.month_usage(force=force)
 
 
+@app.get("/api/agent/usage/session/{session_id}")
+def agent_session_usage(p: Me, session_id: str) -> dict:
+    """Token + uoc tinh chi phi cua RIENG mot phien chat.
+
+    Nguon khac han /api/agent/usage: so nay doc tu bang agent_token_usage,
+    ghi tu `usageMetadata` ma Vertex AI tra ve ngay trong response. Nho vay
+    no co NGAY sau moi luot chat va tach duoc theo phien — dieu ma metric
+    Cloud Monitoring khong lam duoc (xem app/agent/token_log.py).
+
+    KHONG gioi han vai tro nhu so ca thang: day la chi phi cua chinh cuoc
+    tro chuyen nguoi hoi vua tao ra, analyst cung duoc thay. Nhung chi cua
+    chinh ho — cau truy van loc ca user_email, nen dan session_id cua nguoi
+    khac vao URL chi ra bang rong chu khong lo gi.
+    """
+    return agent.session_usage(session_id, p.email)
+
+
 # ---------------------------------------------------------------- release
 
 class ReleaseBody(BaseModel):

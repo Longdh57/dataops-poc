@@ -374,6 +374,33 @@ export type SwitchableUser = Pick<AppUser, "email" | "display_name" | "role" | "
  *
  *  `available: false` = khong doc duoc (thieu quyen, chua cau hinh, API
  *  loi). Man hinh im lang bo qua, khong bao loi. */
+/** Token cua RIENG phien chat dang mo, doc tu bang agent_token_usage
+ *  (ghi tu `usageMetadata` Vertex AI tra ve trong tung response).
+ *
+ *  Khac `AgentUsage`: khong co `available` vi khong phu thuoc quyen
+ *  monitoring hay API ngoai — chua chat cau nao thi `by_model` rong va
+ *  moi so bang 0, the thoi. */
+export type AgentSessionUsage = {
+  session_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  unpriced_models: string[];
+  by_model: TokenByModel[];
+  /** Luot chat gan nhat co ghi token — null khi phien chua ton gi. */
+  last_at: string | null;
+};
+
+/** Mot dong trong bang tach theo model — dung chung cho so thang va so
+ *  phien de man hinh ve mot bang duy nhat cho ca hai. */
+export type TokenByModel = {
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number | null;
+};
+
 export type AgentUsage =
   | { available: false; reason: string }
   | {
@@ -387,10 +414,5 @@ export type AgentUsage =
       /** Model chua co trong bang gia — tien cua chung KHONG nam trong
        *  `cost_usd`, nen man hinh phai bao la con so con thieu. */
       unpriced_models: string[];
-      by_model: {
-        model: string;
-        input_tokens: number;
-        output_tokens: number;
-        cost_usd: number | null;
-      }[];
+      by_model: TokenByModel[];
     };

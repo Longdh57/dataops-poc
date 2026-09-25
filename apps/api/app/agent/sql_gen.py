@@ -28,6 +28,7 @@ from google import genai
 from google.genai import types
 
 from ..settings import settings
+from . import token_log
 from .queries import Scope, _scope_where
 
 MAX_ATTEMPTS = 3
@@ -135,6 +136,10 @@ Question: {question}"""
         contents=prompt,
         config=types.GenerateContentConfig(temperature=0),
     )
+    # Duong goi Vertex AI THU HAI cua mot luot chat (ngoai ADK Runner).
+    # Khong cong vao day thi token cua no bien mat khoi so cua phien —
+    # va MAX_ATTEMPTS cho phep goi toi 3 lan cho mot cau hoi.
+    token_log.add_response(settings.agent_model, resp.usage_metadata)
     text = (resp.text or "").strip()
     # Guard against the model wrapping the answer in a markdown code fence
     # despite being told not to:

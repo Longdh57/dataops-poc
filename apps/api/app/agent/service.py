@@ -16,6 +16,7 @@ from google.genai import types
 
 from ..authz import Principal
 from ..settings import settings
+from . import token_log
 from .root_agent import root_agent
 
 APP_NAME = "dataops_qc_agent"
@@ -44,8 +45,9 @@ async def chat(p: Principal, message: str, session_id: str | None) -> tuple[str,
     khac thi lang le mo phien moi thay vi loi (get_session da tu loc theo
     dung user_id).
     """
+    session = None
+    bucket: dict[str, list[int]] = {}
     try:
-        session = None
         if session_id:
             session = await _session_service.get_session(
                 app_name=APP_NAME, user_id=p.email, session_id=session_id)
@@ -56,14 +58,24 @@ async def chat(p: Principal, message: str, session_id: str | None) -> tuple[str,
 
         content = types.Content(role="user", parts=[types.Part(text=message)])
         reply = ""
-        async for event in _runner.run_async(
-                user_id=p.email, session_id=session.id, new_message=content):
-            if event.is_final_response() and event.content and event.content.parts:
-                reply = event.content.parts[0].text or ""
+        # So tam token cho CA luot: Runner cong vao qua event.usage_metadata,
+        # con sql_gen.py cong vao cung so do tu trong tool (khong tiem
+        # session_id xuong toi do duoc) — xem token_log.py.
+        with token_log.collecting() as bucket:
+            async for event in _runner.run_async(
+                    user_id=p.email, session_id=session.id, new_message=content):
+                token_log.add_response(settings.agent_model, event.usage_metadata)
+                if event.is_final_response() and event.content and event.content.parts:
+                    reply = event.content.parts[0].text or ""
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"khong goi duoc AI Agent: {exc}") from exc
+    finally:
+        # Luot hong giua chung VAN da ton token — ghi lai chu khong bo,
+        # neu khong con so cua phien se thap hon hoa don.
+        if session is not None:
+            token_log.save(session.id, p.email, bucket)
 
     if not reply:
         raise HTTPException(502, "AI Agent tra ve phan hoi rong")

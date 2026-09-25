@@ -8,8 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
 import type {
-  AgentUsage, Gate, Me, Options, RulesCatalog, Summary, SwitchableUser, Ticket, UsersRes,
-  VersionInfo,
+  AgentSessionUsage, AgentUsage, Gate, Me, Options, RulesCatalog, Summary, SwitchableUser, Ticket,
+  UsersRes, VersionInfo,
 } from "./types";
 
 export const useMe = () =>
@@ -91,6 +91,11 @@ export const useSwitchableUsers = (enabled = true) =>
 // khong goi API rieng, va nut "lay lai so moi" ghi vao day thi ca hai doi.
 const AGENT_USAGE_KEY = ["agent", "usage"];
 
+// Tien to key cua so theo phien. Man hinh Agent invalidate dung tien to
+// nay sau moi luot chat — khong liet ke session_id, vi luot dau tien tao
+// ra mot session_id ma luc invalidate no moi vua co.
+export const AGENT_SESSION_USAGE_KEY = ["agent", "usage", "session"];
+
 /** Chi phi Vertex AI thang nay cho man hinh AI Agent. CHI team_lead/admin
  *  goi duoc — vai tro khac nhan 403 va o chi phi im lang khong hien, nen
  *  `retry: false` de khong goi lai mot loi da biet chac.
@@ -114,6 +119,20 @@ export const useAgentUsage = () =>
  *  Van khong phai realtime: metric token cua Vertex AI con tre khoang 1-2
  *  phut sau moi lenh goi, nen bam ngay sau khi chat thuong van ra con so
  *  cu — modal noi ro dieu nay de nguoi dung khong tuong nut bi hong. */
+/** Token cua phien chat dang mo. Nguon la DB cua chinh ung dung (ghi tu
+ *  `usageMetadata` moi luot chat) nen KHONG tre nhu so thang doc tu Cloud
+ *  Monitoring — `staleTime: 0` de sau moi cau hoi la thay so moi ngay.
+ *
+ *  Chua co phien (cuoc tro chuyen moi, chua hoi cau nao) thi khong goi
+ *  API: khong co gi de dem. */
+export const useAgentSessionUsage = (sessionId: string | null) =>
+  useQuery({
+    queryKey: [...AGENT_SESSION_USAGE_KEY, sessionId],
+    queryFn: () => gw<AgentSessionUsage>(`/agent/usage/session/${sessionId}`),
+    enabled: Boolean(sessionId),
+    staleTime: 0,
+  });
+
 export const useRefreshAgentUsage = () => {
   const qc = useQueryClient();
   return useMutation({
