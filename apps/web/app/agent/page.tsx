@@ -22,8 +22,8 @@ import { useEffect, useRef, useState } from "react";
 import { useFmt, useI18n } from "@/app/i18n/context";
 import type { MessageKey } from "@/app/i18n/translate";
 import { post } from "@/app/lib/api";
-import { useAgentUsage, useMe } from "@/app/lib/queries";
-import { ErrBox } from "@/app/ui/bits";
+import { useAgentUsage, useMe, useRefreshAgentUsage } from "@/app/lib/queries";
+import { ErrBox, Modal } from "@/app/ui/bits";
 
 type Turn = { role: "user" | "agent"; text: string };
 
@@ -40,44 +40,124 @@ function storageKey(email: string | undefined): string | null {
   return email ? `dataops.agent.chat.${email}` : null;
 }
 
-/** O chi phi Vertex AI thang nay.
+/** Duoi mot xu thi `toFixed(2)` lam tron thanh "$0.00" trong khi van co
+ *  phat sinh — noi "<$0.01" that hon. */
+function fmtCost(usd: number): string {
+  return usd > 0 && usd < 0.01 ? "<$0.01" : `$${usd.toFixed(2)}`;
+}
+
+/** O chi phi Vertex AI thang nay — bam vao de mo bang chi tiet theo model.
  *
  *  IM LANG BIEN MAT khi khong doc duoc — vai tro khong phai team_lead/
  *  admin (403), thieu quyen monitoring.viewer, hay chay local chua cau
  *  hinh project. Day chi la o phu: no khong duoc phep chen mot hop loi
  *  vao man hinh chat, va cang khong duoc chan viec hoi.
  *
- *  Con so la cua CA PROJECT va tien chi la uoc tinh theo gia niem yet —
- *  ca hai deu noi ro trong tooltip chu khong de nguoi doc tu suy. */
+ *  Truoc day moi gioi han cua con so nam trong tooltip; gio chuyen het vao
+ *  modal, vi tooltip dai khong ai doc het va khong bam duoc nut nao. */
 function UsagePill() {
   const { t } = useI18n();
   const { num } = useFmt();
   const { data } = useAgentUsage();
+  const [open, setOpen] = useState(false);
 
-  if (!data?.available) return null;
-
-  // Duoi mot xu thi lam tron thanh "$0.00" trong khi van co phat sinh —
-  // noi "<$0.01" that hon.
-  const cost =
-    data.cost_usd > 0 && data.cost_usd < 0.01 ? "<$0.01" : `$${data.cost_usd.toFixed(2)}`;
-
-  const tip = [
-    t("agent.usage.tip", {
-      from: data.period_start.slice(0, 10),
-      input: num(data.input_tokens),
-      output: num(data.output_tokens),
-    }),
-    data.unpriced_models.length
-      ? t("agent.usage.unpriced", { models: data.unpriced_models.join(", ") })
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Pill bien mat khi khong doc duoc, NHUNG modal dang mo thi giu lai: bam
+  // "lay lai so moi" ma Monitoring loi thi nguoi dung phai thay ly do, chu
+  // khong phai hop tu dong dong lai nhu chua co gi xay ra.
+  if (!data?.available && !open) return null;
 
   return (
-    <span className="pill" title={tip} style={{ cursor: "help" }}>
-      {t("agent.usage.pill", { tokens: num(data.total_tokens), cost })}
-    </span>
+    <>
+      {data?.available ? (
+        <button className="pill" title={t("agent.usage.open")} onClick={() => setOpen(true)}>
+          {t("agent.usage.pill", {
+            tokens: num(data.total_tokens),
+            cost: fmtCost(data.cost_usd),
+          })}
+        </button>
+      ) : null}
+      {open ? <UsageModal onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+/** Chi tiet token/chi phi: tach theo model, tong tien, va nut doc lai so
+ *  tu Vertex AI.
+ *
+ *  Doc lai chinh query cua pill (cung queryKey) nen mo hop KHONG ban them
+ *  mot request nao; chi nut "lay lai so moi" moi goi API, voi force=true
+ *  de bo qua cache 5 phut ben server.
+ *
+ *  Dong "do tre" la bat buoc chu khong phai trang tri: metric token cua
+ *  Vertex AI ve sau 1-2 phut, nen vua chat xong bam vao day thay so chua
+ *  doi la binh thuong — khong noi ro thi nguoi dung tuong app dem sai. */
+function UsageModal({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const { num, dt } = useFmt();
+  const { data } = useAgentUsage();
+  const refresh = useRefreshAgentUsage();
+
+  return (
+    <Modal title={t("agent.usage.modal.title")} onClose={onClose}>
+      {data?.available ? (
+        <>
+          <p className="sub" style={{ marginBottom: 10 }}>
+            {t("agent.usage.modal.period", {
+              from: data.period_start.slice(0, 10),
+              asOf: dt(data.as_of),
+            })}
+          </p>
+          {data.by_model.length ? (
+            <table className="t">
+              <thead>
+                <tr>
+                  <th>{t("agent.usage.col.model")}</th>
+                  <th className="num">{t("agent.usage.col.input")}</th>
+                  <th className="num">{t("agent.usage.col.output")}</th>
+                  <th className="num">{t("agent.usage.col.cost")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.by_model.map((r) => (
+                  <tr key={r.model}>
+                    <td className="mono">{r.model}</td>
+                    <td className="num">{num(r.input_tokens)}</td>
+                    <td className="num">{num(r.output_tokens)}</td>
+                    {/* cost_usd = null: model chua co trong bang gia. Hien
+                        dau gach chu KHONG hien $0.00 — $0.00 la noi doi. */}
+                    <td className="num">{r.cost_usd === null ? "—" : fmtCost(r.cost_usd)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td><b>{t("agent.usage.total")}</b></td>
+                  <td className="num"><b>{num(data.input_tokens)}</b></td>
+                  <td className="num"><b>{num(data.output_tokens)}</b></td>
+                  <td className="num"><b>{fmtCost(data.cost_usd)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <p className="sub">{t("agent.usage.empty")}</p>
+          )}
+          {data.unpriced_models.length ? (
+            <p className="hint tone-warn">
+              {t("agent.usage.unpriced", { models: data.unpriced_models.join(", ") })}
+            </p>
+          ) : null}
+          <p className="hint">{t("agent.usage.delay")}</p>
+          <p className="hint">{t("agent.usage.scope")}</p>
+        </>
+      ) : (
+        <p className="sub">{t("agent.usage.unavailable", { reason: data?.reason ?? "" })}</p>
+      )}
+      <ErrBox error={refresh.error} />
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 12 }}>
+        <button className="btn" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+          {refresh.isPending ? t("agent.usage.refreshing") : t("agent.usage.refresh")}
+        </button>
+        <button className="btn btn-primary" onClick={onClose}>{t("common.close")}</button>
+      </div>
+    </Modal>
   );
 }
 

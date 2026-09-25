@@ -925,12 +925,18 @@ async def agent_chat(body: AgentChatBody, p: Me) -> dict:
 
 
 @app.get("/api/agent/usage")
-def agent_usage(p: Me) -> dict:
+def agent_usage(p: Me, force: bool = False) -> dict:
     """Token + uoc tinh chi phi Vertex AI tu dau thang (UTC).
 
     Doc tu Cloud Monitoring chu khong tu dem — xem app/agent/usage.py cho
     hai gioi han cua con so nay (la cua CA PROJECT, va tien chi la uoc
     tinh theo gia niem yet).
+
+    `force=true` la nut "Lay lai so moi" trong modal chi phi tren man hinh
+    Agent: bo qua cache 5 phut cua tien trinh de doc lai Monitoring ngay.
+    No KHONG lam so realtime — metric token cua Vertex AI con tre khoang
+    1-2 phut sau moi lenh goi, nen bam don chi ton them moi lan mot request
+    Monitoring chu khong ra con so moi hon.
 
     Gioi han o team_lead/admin: day la chi phi ha tang, khong phai du lieu
     nghiep vu. Muon cho ca analyst xem thi bo dong require di — tool cua
@@ -941,7 +947,7 @@ def agent_usage(p: Me) -> dict:
     im lang bien mat, khong lam hong cho chat.
     """
     p.require("team_lead", "admin")
-    return agent.month_usage()
+    return agent.month_usage(force=force)
 
 
 # ---------------------------------------------------------------- release

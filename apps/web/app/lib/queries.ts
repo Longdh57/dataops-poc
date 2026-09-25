@@ -3,7 +3,7 @@
 // Mot cho duy nhat khai bao queryKey. Trung key = dung chung cache: banner
 // do tuoi, badge tren tab va dashboard chi goi /version mot lan.
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { gw, qs } from "./api";
 import type { Filters } from "./filters";
@@ -87,6 +87,10 @@ export const useSwitchableUsers = (enabled = true) =>
     staleTime: 60_000,
   });
 
+// Pill tren man hinh Agent va modal chi tiet dung chung mot key — modal
+// khong goi API rieng, va nut "lay lai so moi" ghi vao day thi ca hai doi.
+const AGENT_USAGE_KEY = ["agent", "usage"];
+
 /** Chi phi Vertex AI thang nay cho man hinh AI Agent. CHI team_lead/admin
  *  goi duoc — vai tro khac nhan 403 va o chi phi im lang khong hien, nen
  *  `retry: false` de khong goi lai mot loi da biet chac.
@@ -95,8 +99,25 @@ export const useSwitchableUsers = (enabled = true) =>
  *  staleTime dai la dung — goi day hon cung khong ra so moi. */
 export const useAgentUsage = () =>
   useQuery({
-    queryKey: ["agent", "usage"],
+    queryKey: AGENT_USAGE_KEY,
     queryFn: () => gw<AgentUsage>("/agent/usage"),
     retry: false,
     staleTime: 300_000,
   });
+
+/** Nut "Lay lai so moi" trong modal chi phi cua man hinh Agent.
+ *
+ *  `force=true` de backend bo qua cache 5 phut cua no; ket qua ghi thang
+ *  vao cache React Query nen pill ngoai va modal doi CUNG LUC, khong phai
+ *  cho `staleTime` 5 phut o tren het han.
+ *
+ *  Van khong phai realtime: metric token cua Vertex AI con tre khoang 1-2
+ *  phut sau moi lenh goi, nen bam ngay sau khi chat thuong van ra con so
+ *  cu — modal noi ro dieu nay de nguoi dung khong tuong nut bi hong. */
+export const useRefreshAgentUsage = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => gw<AgentUsage>(`/agent/usage${qs({ force: "true" })}`),
+    onSuccess: (data) => qc.setQueryData(AGENT_USAGE_KEY, data),
+  });
+};

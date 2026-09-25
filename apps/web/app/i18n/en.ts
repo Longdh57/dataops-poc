@@ -457,8 +457,22 @@ export const en: Record<MessageKey, string> = {
   "agent.send": "Send",
   "agent.newChat": "New conversation",
   "agent.usage.pill": "This month: {tokens} tokens · ≈{cost}",
-  "agent.usage.tip":
-    "Since {from} (UTC). Token counts come from Cloud Monitoring and cover the WHOLE PROJECT — every Vertex AI call, with no split per asker. The amount is an estimate at list price, before credits or contract discounts; the real figure lives in Cloud Billing. Data lags by a few minutes. In: {input} · Out: {output}",
+  "agent.usage.open": "Click for token & cost detail per model",
+  "agent.usage.modal.title": "Vertex AI tokens & cost this month",
+  "agent.usage.modal.period": "Since {from} (UTC) · figures as of {asOf}",
+  "agent.usage.col.model": "Model",
+  "agent.usage.col.input": "Input tokens",
+  "agent.usage.col.output": "Output tokens",
+  "agent.usage.col.cost": "Estimate",
+  "agent.usage.total": "Total",
+  "agent.usage.empty": "No Vertex AI calls yet this month.",
+  "agent.usage.delay":
+    "Token figures lag because of Vertex AI infrastructure: every call goes through Cloud Monitoring first, so it usually shows up 1–2 minutes later. Numbers not moving right after a chat is normal — wait about a minute, then hit “Refresh numbers”.",
+  "agent.usage.scope":
+    "The figures cover the WHOLE PROJECT — every Vertex AI call, with no split per asker. The amount is an estimate at list price, before credits or contract discounts; the real figure lives in Cloud Billing.",
+  "agent.usage.refresh": "Refresh numbers",
+  "agent.usage.refreshing": "Reading again…",
+  "agent.usage.unavailable": "Could not read the figures: {reason}",
   "agent.usage.unpriced": "No price table for {models} — the amount shown is missing that part.",
 
   // ------------------------------------------------ man nguoi dung & quyen

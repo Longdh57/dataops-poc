@@ -292,11 +292,21 @@ def test_month_usage_loi_monitoring_khong_lam_hong_man_hinh(monkeypatch):
 
 def test_agent_usage_chi_danh_cho_team_lead_va_admin(client, monkeypatch):
     """Chi phi ha tang khong phai du lieu nghiep vu — analyst khong xem."""
-    monkeypatch.setattr(main_module.agent, "month_usage",
-                        lambda: {"available": True, "cost_usd": 1.23})
+    da_goi: list[bool] = []
+
+    def gia_lap(force: bool = False) -> dict:
+        da_goi.append(force)
+        return {"available": True, "cost_usd": 1.23}
+
+    monkeypatch.setattr(main_module.agent, "month_usage", gia_lap)
 
     assert client.get("/api/agent/usage", headers=as_user(TX)).status_code == 403
 
     res = client.get("/api/agent/usage", headers=as_user(ADMIN))
     assert res.status_code == 200
     assert res.json()["cost_usd"] == 1.23
+
+    # Nut "Lay lai so moi" trong modal chi phi: force=true phai xuyen xuong
+    # den ham doc Monitoring, khong thi bam mai van ra cache 5 phut cu.
+    assert client.get("/api/agent/usage?force=true", headers=as_user(ADMIN)).status_code == 200
+    assert da_goi == [False, True]

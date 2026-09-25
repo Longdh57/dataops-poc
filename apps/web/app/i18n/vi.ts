@@ -459,8 +459,22 @@ export const vi = {
   "agent.send": "Gửi",
   "agent.newChat": "Cuộc trò chuyện mới",
   "agent.usage.pill": "Tháng này: {tokens} token · ≈{cost}",
-  "agent.usage.tip":
-    "Tính từ {from} (giờ UTC). Số token đọc từ Cloud Monitoring, là của CẢ PROJECT — gộp mọi lệnh gọi Vertex AI, không tách được theo người hỏi. Tiền chỉ là ước tính theo giá niêm yết, chưa trừ credit hay giảm giá hợp đồng; số thật xem ở Cloud Billing. Dữ liệu trễ vài phút. Vào: {input} · Ra: {output}",
+  "agent.usage.open": "Bấm để xem chi tiết token & chi phí theo model",
+  "agent.usage.modal.title": "Token & chi phí Vertex AI tháng này",
+  "agent.usage.modal.period": "Tính từ {from} (giờ UTC) · số liệu tại thời điểm {asOf}",
+  "agent.usage.col.model": "Model",
+  "agent.usage.col.input": "Token vào",
+  "agent.usage.col.output": "Token ra",
+  "agent.usage.col.cost": "Ước tính",
+  "agent.usage.total": "Tổng",
+  "agent.usage.empty": "Tháng này chưa có lệnh gọi Vertex AI nào.",
+  "agent.usage.delay":
+    "Số token có độ trễ do hạ tầng Vertex AI: mỗi lệnh gọi phải đi qua Cloud Monitoring nên thường 1–2 phút sau mới hiện ra. Vừa chat xong mà số chưa đổi là bình thường — chờ khoảng một phút rồi bấm “Lấy lại số mới”.",
+  "agent.usage.scope":
+    "Số liệu là của CẢ PROJECT — gộp mọi lệnh gọi Vertex AI, không tách được theo người hỏi. Tiền chỉ là ước tính theo giá niêm yết, chưa trừ credit hay giảm giá hợp đồng; số thật xem ở Cloud Billing.",
+  "agent.usage.refresh": "Lấy lại số mới",
+  "agent.usage.refreshing": "Đang đọc lại…",
+  "agent.usage.unavailable": "Không đọc được số liệu: {reason}",
   "agent.usage.unpriced": "Chưa có bảng giá cho {models} — tiền hiển thị đang thiếu phần này.",
 
   // ------------------------------------------------ man nguoi dung & quyen

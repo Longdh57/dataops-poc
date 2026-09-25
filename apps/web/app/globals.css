@@ -229,6 +229,15 @@ h2 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
   color: var(--ink2);
   white-space: nowrap;
 }
+/* Pill bam duoc (o chi phi tren man hinh Agent mo modal chi tiet) — reset
+   lai mac dinh cua <button> de trong y nhu pill tinh, chi khac con tro. */
+button.pill {
+  border: 0;
+  cursor: pointer;
+  font-family: var(--mono);
+}
+button.pill:hover { background: var(--line-soft); color: var(--ink); }
+
 .pill-crit { background: var(--crit-soft); color: var(--crit); }
 .pill-warn { background: var(--warn-soft); color: var(--warn); }
 .pill-good { background: var(--good-soft); color: var(--good); }
