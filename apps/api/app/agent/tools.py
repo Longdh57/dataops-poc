@@ -61,6 +61,68 @@ def list_open_tickets(tool_context: ToolContext, state: str | None = None) -> li
         return queries.list_open_tickets(cur, scope, state=state)
 
 
+def get_deposit_trend(tool_context: ToolContext, institution: str | None = None,
+                       state: str | None = None, year_from: int | None = None,
+                       year_to: int | None = None) -> dict:
+    """Year-by-year deposit trend, aggregated exactly in SQL (SUM per year) —
+    use this for ANY question about trend, average, growth rate,
+    year-over-year change, "which year was highest/lowest", or "which years
+    were above/below average", instead of get_fact.
+
+    get_fact CANNOT answer these reliably: it has no aggregate/GROUP BY
+    ability and caps results at 50 raw rows, so a multi-state institution or
+    a whole state's data silently gets cut off, and a name matching several
+    institution_ids (e.g. "Wells Fargo Bank" also matches "Wells Fargo Bank
+    South Central") gets conflated instead of summed correctly per year.
+
+    Leave `institution` empty and pass only `state` to get that state's
+    total deposit trend across all institutions. Leave both empty (within
+    your scope) for an overall trend. The response already includes
+    average_deposit, highest_year, lowest_year, above_average_years,
+    below_average_years, largest_increase_year, largest_decrease_year, and
+    per-year yoy_growth_pct — read these fields directly, do not recompute
+    the average or growth yourself from the raw rows.
+
+    year_from/year_to: leave BOTH empty for a relative phrase like "the last
+    5 years" or "over time" — omitting them returns every year that exists
+    for this filter, which already IS "the last N years" since the table
+    only holds a handful of recent years. Do NOT guess absolute years for a
+    relative phrase (e.g. do not turn "last 5 years" into 2019-2023) — you
+    do not reliably know the current year or which years this table holds.
+    Only set year_from/year_to when the user names an explicit year or
+    range themselves (e.g. "since 2024", "between 2022 and 2024").
+    """
+    scope = _scope_from(tool_context)
+    with db() as conn, conn.cursor() as cur:
+        return queries.deposit_trend(cur, scope, institution=institution, state=state,
+                                      year_from=year_from, year_to=year_to)
+
+
+def rank_deposits(tool_context: ToolContext, year: int, state: str | None = None,
+                   group_by: str = "institution", direction: str = "top",
+                   limit: int = 15) -> dict:
+    """Rank institutions or states by total deposit IN A SINGLE YEAR —
+    use this for cross-entity questions like "which banks/states have
+    deposits above the overall average", "top N banks by deposit", or
+    "which state had the highest total deposits". get_fact cannot answer
+    these (no ranking/aggregate ability); get_deposit_trend answers a
+    different shape (one entity's trend over years, not many entities
+    compared in one year).
+
+    group_by: "institution" (optionally further filtered by `state`) or
+    "state" (deposits totalled per state, across all institutions).
+    direction: "top" / "bottom" N by deposit, or "above_average" /
+    "below_average" relative to the overall average IN THAT SAME POOL
+    (already computed and returned as overall_average_deposit — do not
+    recompute it). If the user doesn't name a year, use the most recent
+    year you know from other tool results, or ask which year they mean.
+    """
+    scope = _scope_from(tool_context)
+    with db() as conn, conn.cursor() as cur:
+        return queries.rank_deposits(cur, scope, year=year, state=state,
+                                      group_by=group_by, direction=direction, limit=limit)
+
+
 def get_fact(tool_context: ToolContext, question: str) -> dict:
     """Look up raw data in fact_current using a free-form question (no exact
     key known ahead of time) — e.g. by institution name, deposit range,
